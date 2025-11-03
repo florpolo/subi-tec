@@ -406,6 +406,9 @@ export default function MyTasks() {
             const fs = formStates[order.id] || { comments: '', parts: [], photos: [], signature: '', dni: '', aclaracion: '' };
             const isInProgress = order.status === 'In Progress';
 
+            // ✅ Teléfono: usar el de la orden o, si no está, el del edificio
+            const contactPhone = order.contact_phone || building?.contact_phone;
+
             return (
               <div key={order.id} className="bg-white rounded-xl shadow-lg border-2 border-gray-300 overflow-hidden">
                 <div className="p-6">
@@ -432,9 +435,12 @@ export default function MyTasks() {
                         {building?.entry_hours && (
                           <span>Horario de ingreso: <span className="font-medium">{building.entry_hours}</span></span>
                         )}
-                        {order.contact_phone && (
-                          <span>Contacto: <span className="font-medium">{order.contact_phone}</span></span>
+
+                        {/* ✅ Teléfono de contacto visible */}
+                        {contactPhone && (
+                          <span>Teléfono: <span className="font-medium">{contactPhone}</span></span>
                         )}
+
                         {order.date_time && (
                           <span className="flex items-center gap-1">
                             <Clock size={14} />
