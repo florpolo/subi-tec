@@ -1,4 +1,4 @@
-tengo esto en datalayer
+
 import { supabaseDataLayer } from './supabaseDataLayer';
 import type {
   Building as SupabaseBuilding,
