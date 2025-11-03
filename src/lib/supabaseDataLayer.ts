@@ -443,7 +443,8 @@ export const supabaseDataLayer = {
   },
 //Remitos
 
-export async function getDefaultRemitoTemplate(companyId: string) {
+// Remitos (plantillas y numerador) — dentro del objeto supabaseDataLayer
+getDefaultRemitoTemplate: async (companyId: string) => {
   const { data, error } = await supabase
     .from("remito_templates")
     .select("*")
@@ -452,9 +453,9 @@ export async function getDefaultRemitoTemplate(companyId: string) {
     .maybeSingle();
   if (error) throw error;
   return data;
-}
+},
 
-export async function listRemitoTemplates(companyId: string) {
+listRemitoTemplates: async (companyId: string) => {
   const { data, error } = await supabase
     .from("remito_templates")
     .select("*")
@@ -462,17 +463,16 @@ export async function listRemitoTemplates(companyId: string) {
     .order("updated_at", { ascending: false });
   if (error) throw error;
   return data || [];
-}
+},
 
-export async function getNextRemitoNo(companyId: string) {
+getNextRemitoNo: async (companyId: string) => {
   const { data, error } = await supabase.rpc("get_next_remito_no", {
     p_company_id: companyId,
   });
   if (error) throw error;
   return data as number;
-}
+},
 
-// y abajo, en el export del objeto principal, incluir estas 3 funciones.
 
 
 
