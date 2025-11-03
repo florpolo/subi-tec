@@ -281,10 +281,10 @@ export function createDataLayer(companyId: string) {
       return technicians.map(mapTechnician);
     },
 
-    getTechnician: async (id: string): Promise<Technician | null> => {
-      const technician = await supabaseDataLayer.getTechnician(id, companyId);
-      return technician ? mapTechnician(technician) : null;
-    },
+  getTechnicianStatus: async (technicianId: string): Promise<'free' | 'in-progress' | 'busy'> => {
+  const s = await supabaseDataLayer.getTechnicianStatus(technicianId, companyId); // 'free' | 'busy'
+  return s === 'busy' ? 'in-progress' : 'free';
+},
 
     createTechnician: async (technician: Omit<Technician, 'id'>): Promise<Technician | null> => {
       const result = await supabaseDataLayer.createTechnician(
