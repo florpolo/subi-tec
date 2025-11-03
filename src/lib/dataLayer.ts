@@ -417,6 +417,10 @@ export function createDataLayer(companyId: string) {
     uploadSignature: async (dataUrl: string, workOrderId: string): Promise<string | null> => {
       return await supabaseDataLayer.uploadSignature(dataUrl, companyId, workOrderId);
     },
+// Remitos (plantillas y numerador)
+getDefaultRemitoTemplate: () => supabaseDataLayer.getDefaultRemitoTemplate(companyId),
+listRemitoTemplates: () => supabaseDataLayer.listRemitoTemplates(companyId),
+getNextRemitoNo: () => supabaseDataLayer.getNextRemitoNo(companyId),
 
     /* ===== Equipos ===== */
     listEquipments: async (buildingId?: string): Promise<Equipment[]> => {
