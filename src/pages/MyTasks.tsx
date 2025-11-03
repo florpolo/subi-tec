@@ -13,7 +13,7 @@ const baDayKey = (d: Date) =>
   new Intl.DateTimeFormat('en-CA', { timeZone: TZ_BA, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
 
 const isOnOrBeforeTodayBA = (iso?: string | null) => {
-  if (!iso) return true; // sin fecha => permitido en Pending
+  if (!iso) return true;
   const k = baDayKey(new Date(iso));
   const todayK = baDayKey(new Date());
   return k <= todayK;
@@ -62,12 +62,58 @@ const getPriorityLabel = (p: string) => (p === 'High' ? 'Alta' : p === 'Medium' 
 const getClaimTypeLabel = (t: string) =>
   t === 'Semiannual Tests' ? 'Pruebas semestrales' : t === 'Monthly Maintenance' ? 'Mantenimiento mensual' : t === 'Corrective' ? 'Correctivo' : t;
 
+// ======== Autocorrección (simple) ========
+// Reemplazos de palabras/expresiones comunes de mantenimiento
+const AUTOCORRECT_MAP: Array<{ pattern: RegExp; replace: string }> = [
+  // Palabras sueltas (con límites de palabra)
+  { pattern: /\basensor\b/gi, replace: 'ascensor' },
+  { pattern: /\bvalvula\b/gi, replace: 'válvula' },
+  { pattern: /\bvalvulas\b/gi, replace: 'válvulas' },
+  { pattern: /\bmanija\b/gi, replace: 'manilla' }, // si preferís "manija", borrá esta línea
+  { pattern: /\bplaqueta\b/gi, replace: 'placa' },
+  { pattern: /\bburlete\b/gi, replace: 'burlete' }, // ejemplo para mantener igual si viene mal capitalizado
+  { pattern: /\bmanten(i|í)mento\b/gi, replace: 'mantenimiento' },
+  { pattern: /\bpreventibo\b/gi, replace: 'preventivo' },
+  { pattern: /\bcorrectibo\b/gi, replace: 'correctivo' },
+  { pattern: /\bllabe\b/gi, replace: 'llave' },
+  { pattern: /\bpasamano\b/gi, replace: 'pasamanos' },
+
+  // Frases frecuentes
+  { pattern: /\bmantenimiento preventibo\b/gi, replace: 'mantenimiento preventivo' },
+  { pattern: /\bpuerta cabina\b/gi, replace: 'puerta de cabina' },
+  { pattern: /\bpuerta piso\b/gi, replace: 'puerta de piso' },
+  { pattern: /\btablero electrico\b/gi, replace: 'tablero eléctrico' },
+  { pattern: /\binterruptor termico\b/gi, replace: 'interruptor térmico' },
+  { pattern: /\bcontacto electrico\b/gi, replace: 'contacto eléctrico' },
+];
+
+// Normaliza múltiples espacios y capitaliza oraciones si hace falta
+function postNormalize(text: string): string {
+  // compactar espacios
+  let t = text.replace(/[ \t]+/g, ' ').replace(/\s+\n/g, '\n').trim();
+  return t;
+}
+
+// Aplica el diccionario de reemplazos
+function autoCorrectText(text: string): string {
+  if (!text) return text;
+  let out = text;
+  for (const rule of AUTOCORRECT_MAP) {
+    out = out.replace(rule.pattern, rule.replace);
+  }
+  return postNormalize(out);
+}
+
+function autoCorrectParts(parts: Array<{ name: string; quantity: number }>): Array<{ name: string; quantity: number }> {
+  return parts.map(p => ({ ...p, name: autoCorrectText(p.name) }));
+}
+
 // ======== Tipos auxiliares ========
 interface DailyCounters {
-  today: number;       // Pending con fecha HOY
-  pending: number;     // Pending sin fecha o con fecha pasada
-  inProgress: number;  // todas en curso
-  completed: number;   // Completadas HOY (por finish_time)
+  today: number;
+  pending: number;
+  inProgress: number;
+  completed: number;
 }
 
 export default function MyTasks() {
@@ -96,6 +142,8 @@ export default function MyTasks() {
   const [parts, setParts] = useState<Array<{ name: string; quantity: number }>>([]);
   const [photos, setPhotos] = useState<string[]>([]);
   const [signature, setSignature] = useState<string>('');
+  const [clientDni, setClientDni] = useState<string>('');
+  const [clientClarification, setClientClarification] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ======== Catálogos ========
@@ -107,10 +155,6 @@ export default function MyTasks() {
   };
 
   // ======== Reglas de filtrado (vista técnico) ========
-  // - today: Pending con fecha == HOY
-  // - pending: Pending sin fecha o con fecha pasada (< HOY)
-  // - inProgress: todas En curso
-  // - completed: Completed con finish_time == HOY
   const applyFilter = (ordersList: WorkOrder[], filter: 'today' | 'pending' | 'inProgress' | 'completed') => {
     let filtered = ordersList;
 
@@ -118,13 +162,12 @@ export default function MyTasks() {
       filtered = ordersList.filter((o: any) => {
         if (o.status !== 'Pending') return false;
         const dt = o.date_time || o.dateTime || null;
-        return isSameDayBA(dt); // solo las programadas hoy
+        return isSameDayBA(dt);
       });
     } else if (filter === 'pending') {
       filtered = ordersList.filter((o: any) => {
         if (o.status !== 'Pending') return false;
         const dt = o.date_time || o.dateTime || null;
-        // sin fecha OR fecha pasada
         return !dt || (!isSameDayBA(dt) && !isFutureBA(dt));
       });
     } else if (filter === 'inProgress') {
@@ -137,7 +180,6 @@ export default function MyTasks() {
       });
     }
 
-    // Orden: En curso primero, luego prioridad alta→baja, luego más recientes por creación
     return filtered.sort((a: any, b: any) => {
       if (a.status === 'In Progress' && b.status !== 'In Progress') return -1;
       if (a.status !== 'In Progress' && b.status === 'In Progress') return 1;
@@ -171,7 +213,6 @@ export default function MyTasks() {
     }
     setTechnician(currentTech);
 
-    // Trae SOLO OTs del técnico
     const fetchedOrders = await supabaseDataLayer.listWorkOrders(activeCompanyId, {
       technician_id: currentTech.id,
     });
@@ -180,7 +221,6 @@ export default function MyTasks() {
     recomputeCounters(fetchedOrders);
     setOrders(applyFilter(fetchedOrders, activeFilter));
 
-    // Catálogos
     const [allBuildings, allElevators] = await Promise.all([
       supabaseDataLayer.listBuildings(activeCompanyId),
       supabaseDataLayer.listElevators(activeCompanyId),
@@ -188,7 +228,6 @@ export default function MyTasks() {
     setBuildings(allBuildings);
     setElevators(allElevators);
 
-    // Historial por ascensor
     const histories: Record<string, ElevatorHistory[]> = {};
     const elevatorIds = new Set((fetchedOrders as any[]).map((o) => o.elevator_id));
     for (const eId of elevatorIds) {
@@ -204,7 +243,6 @@ export default function MyTasks() {
     return () => clearInterval(interval);
   }, [activeCompanyId, user]);
 
-  // Sincronizar lista y contadores cuando cambie el filtro o arriben nuevas órdenes
   useEffect(() => {
     setOrders(applyFilter(allOrders, activeFilter));
     recomputeCounters(allOrders);
@@ -228,17 +266,27 @@ export default function MyTasks() {
     setParts((order as any).parts_used || []);
     setPhotos((order as any).photo_urls || []);
     setSignature((order as any).signature_data_url || '');
+    setClientDni((order as any).client_dni || '');
+    setClientClarification((order as any).client_clarification || '');
   };
 
   const handleSaveChanges = async (orderId: string) => {
     if (!activeCompanyId) return;
+
+    // ⬇️ AUTOCORRECCIÓN ANTES DE GUARDAR
+    const correctedComments = autoCorrectText(comments);
+    const correctedParts = autoCorrectParts(parts);
+    const correctedClarification = autoCorrectText(clientClarification);
+
     await supabaseDataLayer.updateWorkOrder(
       orderId,
       {
-        comments,
-        parts_used: parts.length > 0 ? parts : undefined,
+        comments: correctedComments || undefined,
+        parts_used: correctedParts.length > 0 ? correctedParts : undefined,
         photo_urls: photos.length > 0 ? photos : undefined,
         signature_data_url: signature || undefined,
+        client_dni: clientDni || undefined,
+        client_clarification: correctedClarification || undefined,
       },
       activeCompanyId
     );
@@ -249,15 +297,23 @@ export default function MyTasks() {
 
   const handleComplete = async (order: WorkOrder) => {
     if (!activeCompanyId) return;
+
+    // ⬇️ AUTOCORRECCIÓN ANTES DE COMPLETAR
+    const correctedComments = autoCorrectText(comments);
+    const correctedParts = autoCorrectParts(parts);
+    const correctedClarification = autoCorrectText(clientClarification);
+
     await supabaseDataLayer.updateWorkOrder(
       order.id,
       {
         status: 'Completed',
         finish_time: new Date().toISOString(),
-        comments,
-        parts_used: parts.length > 0 ? parts : undefined,
+        comments: correctedComments || undefined,
+        parts_used: correctedParts.length > 0 ? correctedParts : undefined,
         photo_urls: photos.length > 0 ? photos : undefined,
         signature_data_url: signature || undefined,
+        client_dni: clientDni || undefined,
+        client_clarification: correctedClarification || undefined,
       },
       activeCompanyId
     );
@@ -267,7 +323,6 @@ export default function MyTasks() {
         elevator_id: (order as any).elevator_id,
         work_order_id: order.id,
         date: new Date().toISOString().split('T')[0],
-        // español
         description: `${getClaimTypeLabel((order as any).claim_type)} - ${order.description}`,
         technician_name: technician?.name || 'Desconocido',
       },
@@ -279,6 +334,8 @@ export default function MyTasks() {
     setParts([]);
     setPhotos([]);
     setSignature('');
+    setClientDni('');
+    setClientClarification('');
     alert('¡Tarea completada exitosamente!');
     loadData();
   };
@@ -286,15 +343,22 @@ export default function MyTasks() {
   const handleRevisit = async (order: WorkOrder) => {
     if (!activeCompanyId) return;
     try {
+      // ⬇️ AUTOCORRECCIÓN ANTES DE REVISITA
+      const correctedComments = autoCorrectText(comments);
+      const correctedParts = autoCorrectParts(parts);
+      const correctedClarification = autoCorrectText(clientClarification);
+
       await supabaseDataLayer.updateWorkOrder(
         order.id,
         {
           status: 'Completed',
           finish_time: new Date().toISOString(),
-          comments,
-          parts_used: parts.length > 0 ? parts : undefined,
+          comments: correctedComments || undefined,
+          parts_used: correctedParts.length > 0 ? correctedParts : undefined,
           photo_urls: photos.length > 0 ? photos : undefined,
           signature_data_url: signature || undefined,
+          client_dni: clientDni || undefined,
+          client_clarification: correctedClarification || undefined,
         },
         activeCompanyId
       );
@@ -339,6 +403,8 @@ export default function MyTasks() {
       setParts([]);
       setPhotos([]);
       setSignature('');
+      setClientDni('');
+      setClientClarification('');
 
       alert('✅ Orden completada y revisita creada.');
       await loadData();
@@ -441,7 +507,7 @@ export default function MyTasks() {
                       </div>
                     </div>
 
-                    {/* Acciones (siempre visibles) */}
+                    {/* Acciones */}
                     <div className="flex flex-wrap gap-2">
                       <button
                         onClick={(e) => {
@@ -484,7 +550,7 @@ export default function MyTasks() {
                   </div>
                 </div>
 
-                {/* Sección inferior (sin flecha) */}
+                {/* Sección inferior */}
                 <div className="border-t-2 border-[#d4caaf] p-6 bg-white space-y-6">
                   {/* Historial (toggle) */}
                   {showHistoryForElevator === order.elevator_id && (
@@ -530,7 +596,7 @@ export default function MyTasks() {
                     </div>
                   )}
 
-                  {/* Edición rápida: visible SI la orden está En curso o si se presionó Editar */}
+                  {/* Edición rápida */}
                   {(order.status === 'In Progress' || editingOrderId === order.id) && (
                     <div className="space-y-6">
                       <div>
@@ -538,7 +604,11 @@ export default function MyTasks() {
                         <textarea
                           value={comments}
                           onChange={(e) => setComments(e.target.value)}
+                          onBlur={() => setComments(prev => autoCorrectText(prev))} // ⬅️ autocorrección al salir
                           rows={4}
+                          spellCheck={true}
+                          autoCorrect="on"
+                          autoCapitalize="sentences"
                           className="w-full px-4 py-3 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
                           placeholder="Agregar notas u observaciones..."
                         />
@@ -571,6 +641,16 @@ export default function MyTasks() {
                                     next[index] = { ...next[index], name: e.target.value };
                                     setParts(next);
                                   }}
+                                  onBlur={() => {
+                                    setParts(prev => {
+                                      const next = [...prev];
+                                      next[index] = { ...next[index], name: autoCorrectText(next[index].name) }; // ⬅️ autocorrige
+                                      return next;
+                                    });
+                                  }}
+                                  spellCheck={true}
+                                  autoCorrect="on"
+                                  autoCapitalize="sentences"
                                   className="flex-1 px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
                                 />
                                 <input
@@ -649,6 +729,35 @@ export default function MyTasks() {
                       <div>
                         <label className="block text-[#694e35] font-bold mb-2">Firma del Cliente</label>
                         <SignaturePad onSave={setSignature} initialSignature={signature} />
+
+                        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-[#694e35] font-bold mb-2">DNI</label>
+                            <input
+                              type="text"
+                              value={clientDni}
+                              onChange={(e) => setClientDni(e.target.value)}
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              className="w-full px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                              placeholder="Documento del cliente"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[#694e35] font-bold mb-2">Aclaración</label>
+                            <input
+                              type="text"
+                              value={clientClarification}
+                              onChange={(e) => setClientClarification(e.target.value)}
+                              onBlur={() => setClientClarification(prev => autoCorrectText(prev))} // ⬅️ autocorrección
+                              spellCheck={true}
+                              autoCorrect="on"
+                              autoCapitalize="sentences"
+                              className="w-full px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                              placeholder="Nombre y apellido en claro"
+                            />
+                          </div>
+                        </div>
                       </div>
 
                       <div className="flex flex-wrap gap-3 pt-4 border-t border-[#d4caaf]">
