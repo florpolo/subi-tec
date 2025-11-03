@@ -249,6 +249,8 @@ export default function WorkOrderForm() {
     return labels[type] || type;
   };
 
+  const toOpt = (v: any) => (v && v !== 'undefined' ? v : undefined);
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
@@ -258,8 +260,10 @@ export default function WorkOrderForm() {
     }
 
     const selectedEquipment = equipments.find(eq => eq.id === elevatorId);
-    const selectedElevator = elevators.find(el => el.id === elevatorId);
     const isEquipmentType = !!selectedEquipment;
+
+    const selectedElevatorId = toOpt(isEquipmentType ? undefined : elevatorId);
+    const selectedEquipmentId = toOpt(isEquipmentType ? elevatorId : undefined);
 
     try {
       if (isEditMode && id) {
@@ -267,9 +271,9 @@ export default function WorkOrderForm() {
           claimType,
           correctiveType: claimType === 'Corrective' ? correctiveType : undefined,
           buildingId,
-          elevatorId: isEquipmentType ? undefined : elevatorId,
-          equipmentId: isEquipmentType ? elevatorId : undefined,
-          technicianId: technicianId || undefined,
+          elevatorId: selectedElevatorId,
+          equipmentId: selectedEquipmentId,
+          technicianId: toOpt(technicianId),
           dateTime: dateTime ? baLocalToUtcIso(dateTime) : undefined,
           description,
           priority,
@@ -280,9 +284,9 @@ export default function WorkOrderForm() {
           claimType,
           correctiveType: claimType === 'Corrective' ? correctiveType : undefined,
           buildingId,
-          elevatorId: isEquipmentType ? undefined : elevatorId,
-          equipmentId: isEquipmentType ? elevatorId : undefined,
-          technicianId: technicianId || undefined,
+          elevatorId: selectedElevatorId,
+          equipmentId: selectedEquipmentId,
+          technicianId: toOpt(technicianId),
           contactName: '',
           contactPhone: '',
           dateTime: dateTime ? baLocalToUtcIso(dateTime) : undefined,

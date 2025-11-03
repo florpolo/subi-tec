@@ -101,6 +101,8 @@ export interface Equipment {
 }
 
 /** ====== Utilidades ====== */
+const toNull = (v: any) => (v === undefined || v === '' || v === 'undefined' ? null : v);
+
 function dataUrlToBlob(dataUrl: string): Blob {
   // "data:image/png;base64,AAAA..."
   const [meta, b64] = dataUrl.split(',');
@@ -338,7 +340,20 @@ export const supabaseDataLayer = {
     order: Omit<WorkOrder, 'id' | 'created_at'>,
     companyId: string
   ): Promise<WorkOrder | null> {
-    const payload = { ...order, company_id: companyId };
+    const payload: any = {
+      ...order,
+      company_id: companyId,
+      elevator_id: toNull(order.elevator_id),
+      equipment_id: toNull(order.equipment_id),
+      technician_id: toNull(order.technician_id),
+      date_time: toNull(order.date_time),
+      start_time: toNull(order.start_time),
+      finish_time: toNull(order.finish_time),
+      comments: order.comments ?? null,
+      parts_used: order.parts_used ?? null,
+      photo_urls: order.photo_urls ?? null,
+      signature_data_url: order.signature_data_url ?? null,
+    };
     const { data, error } = await supabase.from<WorkOrder>('work_orders').insert(payload).select().maybeSingle();
     if (error) throw error;
     return data || null;
@@ -349,9 +364,21 @@ export const supabaseDataLayer = {
     updates: Partial<WorkOrder>,
     companyId: string
   ): Promise<WorkOrder | null> {
+    const sanitized: any = { ...updates };
+    if ('elevator_id' in sanitized) sanitized.elevator_id = toNull(sanitized.elevator_id);
+    if ('equipment_id' in sanitized) sanitized.equipment_id = toNull(sanitized.equipment_id);
+    if ('technician_id' in sanitized) sanitized.technician_id = toNull(sanitized.technician_id);
+    if ('date_time' in sanitized) sanitized.date_time = toNull(sanitized.date_time);
+    if ('start_time' in sanitized) sanitized.start_time = toNull(sanitized.start_time);
+    if ('finish_time' in sanitized) sanitized.finish_time = toNull(sanitized.finish_time);
+    if ('comments' in sanitized) sanitized.comments = sanitized.comments ?? null;
+    if ('parts_used' in sanitized) sanitized.parts_used = sanitized.parts_used ?? null;
+    if ('photo_urls' in sanitized) sanitized.photo_urls = sanitized.photo_urls ?? null;
+    if ('signature_data_url' in sanitized) sanitized.signature_data_url = sanitized.signature_data_url ?? null;
+
     const { data, error } = await supabase
       .from<WorkOrder>('work_orders')
-      .update(updates)
+      .update(sanitized)
       .eq('company_id', companyId)
       .eq('id', id)
       .select()
