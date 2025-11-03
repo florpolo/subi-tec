@@ -565,6 +565,6 @@ export default function WorkOrderDetail() {
         )}
         {/* ===== Fin contenido por tab ===== */}
       </div>
-    </div>   {/* <-- ESTE </div> FALTABA (cierra el contenedor externo) */}
+    </div>   
   );
 }
