@@ -26,6 +26,11 @@ const isFutureBA = (iso?: string | null) => {
   return k > todayK;
 };
 
+const isSameDayBA = (iso?: string | null) => {
+  if (!iso) return false;
+  return baDayKey(new Date(iso)) === baDayKey(new Date());
+};
+
 const formatBA = (iso?: string | null) =>
   iso
     ? new Date(iso).toLocaleString('es-AR', {
@@ -59,11 +64,10 @@ const getClaimTypeLabel = (t: string) =>
 
 // ======== Tipos auxiliares ========
 interface DailyCounters {
-  total: number;
-  pending: number;
-  inProgress: number;
-  completed: number;
-  unassigned: number;
+  today: number;       // Pending con fecha HOY
+  pending: number;     // Pending sin fecha o con fecha pasada
+  inProgress: number;  // todas en curso
+  completed: number;   // Completadas HOY (por finish_time)
 }
 
 export default function MyTasks() {
@@ -80,15 +84,14 @@ export default function MyTasks() {
   const [elevatorHistories, setElevatorHistories] = useState<Record<string, ElevatorHistory[]>>({});
 
   const [dailyCounters, setDailyCounters] = useState<DailyCounters>({
-    total: 0,
+    today: 0,
     pending: 0,
     inProgress: 0,
     completed: 0,
-    unassigned: 0
   });
-  const [activeFilter, setActiveFilter] = useState<'total' | 'pending' | 'inProgress' | 'completed'>('total');
+  const [activeFilter, setActiveFilter] = useState<'today' | 'pending' | 'inProgress' | 'completed'>('today');
 
-  // Edición (estado compartido para el bloque activo)
+  // Edición
   const [comments, setComments] = useState<string>('');
   const [parts, setParts] = useState<Array<{ name: string; quantity: number }>>([]);
   const [photos, setPhotos] = useState<string[]>([]);
@@ -104,31 +107,37 @@ export default function MyTasks() {
   };
 
   // ======== Reglas de filtrado (vista técnico) ========
-  const applyFilter = (ordersList: WorkOrder[], filter: 'total' | 'pending' | 'inProgress' | 'completed') => {
+  // - today: Pending con fecha == HOY
+  // - pending: Pending sin fecha o con fecha pasada (< HOY)
+  // - inProgress: todas En curso
+  // - completed: Completed con finish_time == HOY
+  const applyFilter = (ordersList: WorkOrder[], filter: 'today' | 'pending' | 'inProgress' | 'completed') => {
     let filtered = ordersList;
 
-    if (filter === 'total') {
+    if (filter === 'today') {
       filtered = ordersList.filter((o: any) => {
-        if (o.status === 'Pending') {
-          if (!o.date_time && !o.dateTime) return true;
-          return !isFutureBA(o.date_time || o.dateTime);
-        }
-        if (o.status === 'In Progress') return true;
-        if (o.status === 'Completed') return true;
-        return false;
+        if (o.status !== 'Pending') return false;
+        const dt = o.date_time || o.dateTime || null;
+        return isSameDayBA(dt); // solo las programadas hoy
       });
     } else if (filter === 'pending') {
       filtered = ordersList.filter((o: any) => {
         if (o.status !== 'Pending') return false;
         const dt = o.date_time || o.dateTime || null;
-        return isOnOrBeforeTodayBA(dt);
+        // sin fecha OR fecha pasada
+        return !dt || (!isSameDayBA(dt) && !isFutureBA(dt));
       });
     } else if (filter === 'inProgress') {
       filtered = ordersList.filter((o) => o.status === 'In Progress');
     } else if (filter === 'completed') {
-      filtered = ordersList.filter((o) => o.status === 'Completed');
+      filtered = ordersList.filter((o: any) => {
+        if (o.status !== 'Completed') return false;
+        const ft = o.finish_time || o.finishTime || null;
+        return isSameDayBA(ft);
+      });
     }
 
+    // Orden: En curso primero, luego prioridad alta→baja, luego más recientes por creación
     return filtered.sort((a: any, b: any) => {
       if (a.status === 'In Progress' && b.status !== 'In Progress') return -1;
       if (a.status !== 'In Progress' && b.status === 'In Progress') return 1;
@@ -141,11 +150,10 @@ export default function MyTasks() {
 
   const recomputeCounters = (ordersAll: WorkOrder[]) => {
     setDailyCounters({
-      total: applyFilter(ordersAll, 'total').length,
+      today: applyFilter(ordersAll, 'today').length,
       pending: applyFilter(ordersAll, 'pending').length,
       inProgress: applyFilter(ordersAll, 'inProgress').length,
       completed: applyFilter(ordersAll, 'completed').length,
-      unassigned: 0,
     });
   };
 
@@ -163,6 +171,7 @@ export default function MyTasks() {
     }
     setTechnician(currentTech);
 
+    // Trae SOLO OTs del técnico
     const fetchedOrders = await supabaseDataLayer.listWorkOrders(activeCompanyId, {
       technician_id: currentTech.id,
     });
@@ -171,6 +180,7 @@ export default function MyTasks() {
     recomputeCounters(fetchedOrders);
     setOrders(applyFilter(fetchedOrders, activeFilter));
 
+    // Catálogos
     const [allBuildings, allElevators] = await Promise.all([
       supabaseDataLayer.listBuildings(activeCompanyId),
       supabaseDataLayer.listElevators(activeCompanyId),
@@ -180,7 +190,7 @@ export default function MyTasks() {
 
     // Historial por ascensor
     const histories: Record<string, ElevatorHistory[]> = {};
-    const elevatorIds = new Set(fetchedOrders.map((o: any) => o.elevator_id));
+    const elevatorIds = new Set((fetchedOrders as any[]).map((o) => o.elevator_id));
     for (const eId of elevatorIds) {
       const history = await supabaseDataLayer.getElevatorHistory(eId as string, activeCompanyId);
       histories[eId as string] = history;
@@ -194,6 +204,7 @@ export default function MyTasks() {
     return () => clearInterval(interval);
   }, [activeCompanyId, user]);
 
+  // Sincronizar lista y contadores cuando cambie el filtro o arriben nuevas órdenes
   useEffect(() => {
     setOrders(applyFilter(allOrders, activeFilter));
     recomputeCounters(allOrders);
@@ -256,6 +267,7 @@ export default function MyTasks() {
         elevator_id: (order as any).elevator_id,
         work_order_id: order.id,
         date: new Date().toISOString().split('T')[0],
+        // español
         description: `${getClaimTypeLabel((order as any).claim_type)} - ${order.description}`,
         technician_name: technician?.name || 'Desconocido',
       },
@@ -337,7 +349,12 @@ export default function MyTasks() {
   };
 
   // ======== Render ========
-  const kpiButton = (key: 'total' | 'pending' | 'inProgress' | 'completed', label: string, value: number, extraClasses = '') => (
+  const kpiButton = (
+    key: 'today' | 'pending' | 'inProgress' | 'completed',
+    label: string,
+    value: number,
+    extraClasses = ''
+  ) => (
     <button
       onClick={() => setActiveFilter(key)}
       className={`p-3 rounded-lg border-2 text-center shadow-sm transition-all ${
@@ -362,7 +379,7 @@ export default function MyTasks() {
       {/* Counters */}
       <div className="bg-white rounded-xl shadow-lg border-2 border-gray-300 p-4">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {kpiButton('total', 'Total', dailyCounters.total)}
+          {kpiButton('today', 'HOY', dailyCounters.today)}
           {kpiButton('pending', 'Por hacer', dailyCounters.pending, 'text-yellow-600')}
           {kpiButton('inProgress', 'En curso', dailyCounters.inProgress, 'text-blue-600')}
           {kpiButton('completed', 'Completadas', dailyCounters.completed, 'text-green-600')}
@@ -379,7 +396,6 @@ export default function MyTasks() {
             const building = getBuilding(order.building_id);
             const isEditing = order.status === 'In Progress' || editingOrderId === order.id;
 
-            // Teléfono de contacto
             const contactPhone =
               (order as any).contact_phone ||
               (building as any)?.contact_phone ||
@@ -438,7 +454,6 @@ export default function MyTasks() {
                         Historial del ascensor
                       </button>
 
-                      {/* Si ya está "En curso", no hace falta mostrar Editar (ya está abierto) */}
                       {order.status !== 'In Progress' && editingOrderId !== order.id && (
                         <button
                           onClick={(e) => {
@@ -469,7 +484,7 @@ export default function MyTasks() {
                   </div>
                 </div>
 
-                {/* Sección inferior SIEMPRE presente (sin flecha). */}
+                {/* Sección inferior (sin flecha) */}
                 <div className="border-t-2 border-[#d4caaf] p-6 bg-white space-y-6">
                   {/* Historial (toggle) */}
                   {showHistoryForElevator === order.elevator_id && (
@@ -478,41 +493,45 @@ export default function MyTasks() {
                         <HistoryIcon size={18} />
                         Historial del Ascensor {getElevatorInfo(order.elevator_id)}
                       </h4>
-                      {elevatorHistories[order.elevator_id]?.length === 0 ? (
-                        <p className="text-sm text-[#5e4c1e]">No hay historial registrado para este ascensor</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {elevatorHistories[order.elevator_id]?.map((entry) => (
-                            <div key={entry.id} className="bg-white p-3 rounded-lg border border-[#d4caaf]">
-                              <div className="flex justify-between items-start mb-1">
-                                <span className="font-medium text-[#694e35] text-sm">{(entry as any).technician_name}</span>
-                                <span className="text-xs text-[#5e4c1e]">
-                                  {new Date(entry.date).toLocaleDateString('es-AR')}
-                                </span>
-                              </div>
-                              <p className="text-sm text-[#5e4c1e]">{entry.description}</p>
+                      {(() => {
+                        const list = elevatorHistories[order.elevator_id];
+                        if (!list || list.length === 0) {
+                          return <p className="text-sm text-[#5e4c1e]">No hay historial registrado para este ascensor</p>;
+                        }
+                        return (
+                          <div className="space-y-2">
+                            {list.map((entry) => (
+                              <div key={entry.id} className="bg-white p-3 rounded-lg border border-[#d4caaf]">
+                                <div className="flex justify-between items-start mb-1">
+                                  <span className="font-medium text-[#694e35] text-sm">{(entry as any).technician_name}</span>
+                                  <span className="text-xs text-[#5e4c1e]">
+                                    {new Date(entry.date).toLocaleDateString('es-AR')}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-[#5e4c1e]">{entry.description}</p>
 
-                              {entry.work_order_id && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    navigate(`/task/${entry.work_order_id}`);
-                                  }}
-                                  className="mt-2 text-sm text-[#694e35] underline hover:text-[#fcca53]"
-                                >
-                                  Ver Orden de Trabajo →
-                                </button>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                                {entry.work_order_id && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      navigate(`/task/${entry.work_order_id}`);
+                                    }}
+                                    className="mt-2 text-sm text-[#694e35] underline hover:text-[#fcca53]"
+                                  >
+                                    Ver Orden de Trabajo →
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
 
-                  {/* Edición rápida: visible SI la orden está En curso o si el usuario presionó Editar */}
-                  {isEditing && (
+                  {/* Edición rápida: visible SI la orden está En curso o si se presionó Editar */}
+                  {(order.status === 'In Progress' || editingOrderId === order.id) && (
                     <div className="space-y-6">
                       <div>
                         <label className="block text-[#694e35] font-bold mb-2">Comentarios</label>
