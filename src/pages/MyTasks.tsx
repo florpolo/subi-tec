@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabaseDataLayer, WorkOrder, Building, Elevator, ElevatorHistory, Technician } from '../lib/supabaseDataLayer';
 import { useAuth } from '../contexts/AuthContext';
-import { Clock, Play, Save, CheckCircle, RotateCcw, Camera, Plus, X, History as HistoryIcon, ChevronDown, ChevronRight } from 'lucide-react';
+import { Clock, Play, Save, CheckCircle, RotateCcw, Camera, Plus, X, History as HistoryIcon } from 'lucide-react';
 import SignaturePad from '../components/SignaturePad';
 
 // ======== Timezone helpers (Buenos Aires) ========
@@ -75,7 +75,6 @@ export default function MyTasks() {
   const [orders, setOrders] = useState<WorkOrder[]>([]);
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [elevators, setElevators] = useState<Elevator[]>([]);
-  const [expandedOrderId, setExpandedOrderId] = useState<string | null>(null);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [showHistoryForElevator, setShowHistoryForElevator] = useState<string | null>(null);
   const [elevatorHistories, setElevatorHistories] = useState<Record<string, ElevatorHistory[]>>({});
@@ -89,7 +88,7 @@ export default function MyTasks() {
   });
   const [activeFilter, setActiveFilter] = useState<'total' | 'pending' | 'inProgress' | 'completed'>('total');
 
-  // Edición
+  // Edición (estado compartido para el bloque activo)
   const [comments, setComments] = useState<string>('');
   const [parts, setParts] = useState<Array<{ name: string; quantity: number }>>([]);
   const [photos, setPhotos] = useState<string[]>([]);
@@ -164,7 +163,6 @@ export default function MyTasks() {
     }
     setTechnician(currentTech);
 
-    // Trae SOLO OTs del técnico
     const fetchedOrders = await supabaseDataLayer.listWorkOrders(activeCompanyId, {
       technician_id: currentTech.id,
     });
@@ -173,7 +171,6 @@ export default function MyTasks() {
     recomputeCounters(fetchedOrders);
     setOrders(applyFilter(fetchedOrders, activeFilter));
 
-    // Catálogos
     const [allBuildings, allElevators] = await Promise.all([
       supabaseDataLayer.listBuildings(activeCompanyId),
       supabaseDataLayer.listElevators(activeCompanyId),
@@ -210,14 +207,12 @@ export default function MyTasks() {
       { status: 'In Progress', start_time: new Date().toISOString() },
       activeCompanyId
     );
-    setExpandedOrderId(orderId);
-    setEditingOrderId(orderId);
+    setEditingOrderId(orderId); // queda “abierta” para completar
     loadData();
   };
 
   const handleEdit = (order: WorkOrder) => {
     setEditingOrderId(order.id);
-    setExpandedOrderId(order.id);
     setComments((order as any).comments || '');
     setParts((order as any).parts_used || []);
     setPhotos((order as any).photo_urls || []);
@@ -238,7 +233,6 @@ export default function MyTasks() {
     );
     alert('¡Cambios guardados exitosamente!');
     setEditingOrderId(null);
-    setExpandedOrderId(null);
     loadData();
   };
 
@@ -262,15 +256,13 @@ export default function MyTasks() {
         elevator_id: (order as any).elevator_id,
         work_order_id: order.id,
         date: new Date().toISOString().split('T')[0],
-        // ⬇️ Guardar en español
         description: `${getClaimTypeLabel((order as any).claim_type)} - ${order.description}`,
         technician_name: technician?.name || 'Desconocido',
       },
       activeCompanyId
     );
 
-    setEditingOrderId(null);
-    setExpandedOrderId(null);
+    if (editingOrderId === order.id) setEditingOrderId(null);
     setComments('');
     setParts([]);
     setPhotos([]);
@@ -324,15 +316,13 @@ export default function MyTasks() {
           elevator_id: (order as any).elevator_id,
           work_order_id: order.id,
           date: new Date().toISOString().split('T')[0],
-          // ⬇️ Guardar en español
           description: `${getClaimTypeLabel((order as any).claim_type)} - ${order.description}`,
           technician_name: technician?.name || 'Desconocido',
         },
         activeCompanyId
       );
 
-      setEditingOrderId(null);
-      setExpandedOrderId(null);
+      if (editingOrderId === order.id) setEditingOrderId(null);
       setComments('');
       setParts([]);
       setPhotos([]);
@@ -386,10 +376,10 @@ export default function MyTasks() {
       ) : (
         <div className="space-y-4">
           {orders.map((order: any) => {
-            const isExpanded = expandedOrderId === order.id;
             const building = getBuilding(order.building_id);
+            const isEditing = order.status === 'In Progress' || editingOrderId === order.id;
 
-            // Teléfono de contacto para mostrar en la tarjeta
+            // Teléfono de contacto
             const contactPhone =
               (order as any).contact_phone ||
               (building as any)?.contact_phone ||
@@ -400,30 +390,19 @@ export default function MyTasks() {
                 <div className="p-6">
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                     <div className="flex-1 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          aria-label={isExpanded ? 'Contraer' : 'Expandir'}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setExpandedOrderId(isExpanded ? null : order.id);
-                          }}
-                          className="p-1 rounded hover:bg-gray-100"
-                        >
-                          {isExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                        </button>
-
-                        <div className="flex flex-wrap items-center gap-3">
-                          <span className={`px-2 py-0.5 text-xs font-medium border ${getPriorityColor(order.priority)} rounded`}>
-                            {getPriorityLabel(order.priority)}
-                          </span>
-                          <span className="text-sm text-[#5e4c1e]">
-                            Estado: {getStatusLabel(order.status)}
-                          </span>
-                        </div>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className={`px-2 py-0.5 text-xs font-medium border ${getPriorityColor(order.priority)} rounded`}>
+                          {getPriorityLabel(order.priority)}
+                        </span>
+                        <span className="text-sm text-[#5e4c1e]">
+                          Estado: {getStatusLabel(order.status)}
+                        </span>
+                        <span className="text-sm text-[#5e4c1e]">
+                          {getClaimTypeLabel(order.claim_type)}
+                        </span>
                       </div>
 
-                      {/* 👇 Título principal: Dirección del edificio */}
+                      {/* Título principal: Dirección */}
                       <h3 className="text-2xl font-bold text-[#694e35]">{getBuildingName(order.building_id)}</h3>
                       {/* Ascensor */}
                       <p className="text-[#694e35]">Ascensor: {getElevatorInfo(order.elevator_id)}</p>
@@ -437,8 +416,6 @@ export default function MyTasks() {
                         {contactPhone && (
                           <span>Teléfono: <span className="font-medium">{contactPhone}</span></span>
                         )}
-
-                        {/* Fecha programada */}
                         {order.date_time && (
                           <span className="flex items-center gap-1">
                             <Clock size={14} />
@@ -448,12 +425,11 @@ export default function MyTasks() {
                       </div>
                     </div>
 
-                    {/* Acciones visibles siempre */}
+                    {/* Acciones (siempre visibles) */}
                     <div className="flex flex-wrap gap-2">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          setExpandedOrderId(order.id);
                           setShowHistoryForElevator(prev => (prev === order.elevator_id ? null : order.elevator_id));
                         }}
                         className="flex items-center gap-2 px-4 py-2 bg-gray-300 text-[#520f0f] rounded-lg font-medium hover:bg-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-[#520f0f]"
@@ -462,7 +438,8 @@ export default function MyTasks() {
                         Historial del ascensor
                       </button>
 
-                      {(order.status === 'In Progress' || order.status === 'Completed') && editingOrderId !== order.id && (
+                      {/* Si ya está "En curso", no hace falta mostrar Editar (ya está abierto) */}
+                      {order.status !== 'In Progress' && editingOrderId !== order.id && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -492,209 +469,201 @@ export default function MyTasks() {
                   </div>
                 </div>
 
-                {isExpanded && (
-                  <div className="border-t-2 border-[#d4caaf] p-6 bg-white space-y-6">
-                    <div className="flex flex-wrap gap-3">
-                      {/* (botones ya están arriba; acá no duplicamos) */}
-                    </div>
+                {/* Sección inferior SIEMPRE presente (sin flecha). */}
+                <div className="border-t-2 border-[#d4caaf] p-6 bg-white space-y-6">
+                  {/* Historial (toggle) */}
+                  {showHistoryForElevator === order.elevator_id && (
+                    <div className="bg-[#f4ead0] p-4 rounded-lg border-2 border-[#d4caaf]">
+                      <h4 className="font-bold text-[#694e35] mb-3 flex items-center gap-2">
+                        <HistoryIcon size={18} />
+                        Historial del Ascensor {getElevatorInfo(order.elevator_id)}
+                      </h4>
+                      {elevatorHistories[order.elevator_id]?.length === 0 ? (
+                        <p className="text-sm text-[#5e4c1e]">No hay historial registrado para este ascensor</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {elevatorHistories[order.elevator_id]?.map((entry) => (
+                            <div key={entry.id} className="bg-white p-3 rounded-lg border border-[#d4caaf]">
+                              <div className="flex justify-between items-start mb-1">
+                                <span className="font-medium text-[#694e35] text-sm">{(entry as any).technician_name}</span>
+                                <span className="text-xs text-[#5e4c1e]">
+                                  {new Date(entry.date).toLocaleDateString('es-AR')}
+                                </span>
+                              </div>
+                              <p className="text-sm text-[#5e4c1e]">{entry.description}</p>
 
-                    {/* Elevator History */}
-                    {showHistoryForElevator === order.elevator_id && (
-                      <div className="bg-[#f4ead0] p-4 rounded-lg border-2 border-[#d4caaf]">
-                        <h4 className="font-bold text-[#694e35] mb-3 flex items-center gap-2">
-                          <HistoryIcon size={18} />
-                          Historial del Ascensor {getElevatorInfo(order.elevator_id)}
-                        </h4>
-                        {elevatorHistories[order.elevator_id]?.length === 0 ? (
-                          <p className="text-sm text-[#5e4c1e]">No hay historial registrado para este ascensor</p>
+                              {entry.work_order_id && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigate(`/task/${entry.work_order_id}`);
+                                  }}
+                                  className="mt-2 text-sm text-[#694e35] underline hover:text-[#fcca53]"
+                                >
+                                  Ver Orden de Trabajo →
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Edición rápida: visible SI la orden está En curso o si el usuario presionó Editar */}
+                  {isEditing && (
+                    <div className="space-y-6">
+                      <div>
+                        <label className="block text-[#694e35] font-bold mb-2">Comentarios</label>
+                        <textarea
+                          value={comments}
+                          onChange={(e) => setComments(e.target.value)}
+                          rows={4}
+                          className="w-full px-4 py-3 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                          placeholder="Agregar notas u observaciones..."
+                        />
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="block text-[#694e35] font-bold">Repuestos Utilizados</label>
+                          <button
+                            type="button"
+                            onClick={() => setParts([...parts, { name: '', quantity: 1 }])}
+                            className="flex items-center gap-1 px-3 py-1 text-sm bg-yellow-500 text-[#520f0f] rounded-lg hover:bg-yellow-400 transition-colors"
+                          >
+                            <Plus size={16} />
+                            Agregar Repuesto
+                          </button>
+                        </div>
+                        {parts.length === 0 ? (
+                          <p className="text-sm text-[#5e4c1e]">No se agregaron repuestos</p>
                         ) : (
                           <div className="space-y-2">
-                            {elevatorHistories[order.elevator_id]?.map((entry) => (
-                              <div key={entry.id} className="bg-white p-3 rounded-lg border border-[#d4caaf]">
-                                <div className="flex justify-between items-start mb-1">
-                                  <span className="font-medium text-[#694e35] text-sm">{(entry as any).technician_name}</span>
-                                  <span className="text-xs text-[#5e4c1e]">
-                                    {new Date(entry.date).toLocaleDateString('es-AR')}
-                                  </span>
-                                </div>
-                                <p className="text-sm text-[#5e4c1e]">{entry.description}</p>
-
-                                {/* Ver detalle de OT desde historial */}
-                                {entry.work_order_id && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      navigate(`/task/${entry.work_order_id}`);
-                                    }}
-                                    className="mt-2 text-sm text-[#694e35] underline hover:text-[#fcca53]"
-                                  >
-                                    Ver Orden de Trabajo →
-                                  </button>
-                                )}
+                            {parts.map((part, index) => (
+                              <div key={index} className="flex gap-2">
+                                <input
+                                  type="text"
+                                  placeholder="Nombre del repuesto"
+                                  value={part.name}
+                                  onChange={(e) => {
+                                    const next = [...parts];
+                                    next[index] = { ...next[index], name: e.target.value };
+                                    setParts(next);
+                                  }}
+                                  className="flex-1 px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                                />
+                                <input
+                                  type="number"
+                                  placeholder="Cant"
+                                  value={part.quantity}
+                                  onChange={(e) => {
+                                    const next = [...parts];
+                                    next[index] = { ...next[index], quantity: parseInt(e.target.value) || 1 };
+                                    setParts(next);
+                                  }}
+                                  className="w-24 px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setParts(parts.filter((_, i) => i !== index))}
+                                  className="px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
+                                >
+                                  <X size={18} />
+                                </button>
                               </div>
                             ))}
                           </div>
                         )}
                       </div>
-                    )}
 
-                    {/* Edición rápida */}
-                    {editingOrderId === order.id && (order.status === 'In Progress' || order.status === 'Completed') && (
-                      <div className="space-y-6">
-                        <div>
-                          <label className="block text-[#694e35] font-bold mb-2">Comentarios</label>
-                          <textarea
-                            value={comments}
-                            onChange={(e) => setComments(e.target.value)}
-                            rows={4}
-                            className="w-full px-4 py-3 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
-                            placeholder="Agregar notas u observaciones..."
-                          />
-                        </div>
-
-                        <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <label className="block text-[#694e35] font-bold">Repuestos Utilizados</label>
-                            <button
-                              type="button"
-                              onClick={() => setParts([...parts, { name: '', quantity: 1 }])}
-                              className="flex items-center gap-1 px-3 py-1 text-sm bg-yellow-500 text-[#520f0f] rounded-lg hover:bg-yellow-400 transition-colors"
-                            >
-                              <Plus size={16} />
-                              Agregar Repuesto
-                            </button>
+                      <div>
+                        <label className="block text-[#694e35] font-bold mb-2">Fotos</label>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={async (e) => {
+                            const files = e.target.files;
+                            if (!files || !activeCompanyId) return;
+                            const newPhotos = [...photos];
+                            for (let i = 0; i < files.length; i++) {
+                              const url = await supabaseDataLayer.uploadPhoto(files[i], activeCompanyId, order.id);
+                              if (url) newPhotos.push(url);
+                            }
+                            setPhotos(newPhotos);
+                          }}
+                          className="hidden"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="flex items-center gap-2 px-4 py-2 bg-yellow-500 text-[#520f0f] rounded-lg hover:bg-yellow-400 transition-colors mb-3"
+                        >
+                          <Camera size={18} />
+                          Agregar Fotos
+                        </button>
+                        {photos.length > 0 && (
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                            {photos.map((photo, index) => (
+                              <div key={index} className="relative">
+                                <img
+                                  src={photo}
+                                  alt={`Photo ${index + 1}`}
+                                  className="w-full h-32 object-cover rounded-lg border-2 border-[#d4caaf]"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => setPhotos(photos.filter((_, i) => i !== index))}
+                                  className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+                                >
+                                  <X size={16} />
+                                </button>
+                              </div>
+                            ))}
                           </div>
-                          {parts.length === 0 ? (
-                            <p className="text-sm text-[#5e4c1e]">No se agregaron repuestos</p>
-                          ) : (
-                            <div className="space-y-2">
-                              {parts.map((part, index) => (
-                                <div key={index} className="flex gap-2">
-                                  <input
-                                    type="text"
-                                    placeholder="Nombre del repuesto"
-                                    value={part.name}
-                                    onChange={(e) => {
-                                      const next = [...parts];
-                                      next[index] = { ...next[index], name: e.target.value };
-                                      setParts(next);
-                                    }}
-                                    className="flex-1 px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
-                                  />
-                                  <input
-                                    type="number"
-                                    placeholder="Cant"
-                                    value={part.quantity}
-                                    onChange={(e) => {
-                                      const next = [...parts];
-                                      next[index] = { ...next[index], quantity: parseInt(e.target.value) || 1 };
-                                      setParts(next);
-                                    }}
-                                    className="w-24 px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => setParts(parts.filter((_, i) => i !== index))}
-                                    className="px-3 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition-colors"
-                                  >
-                                    <X size={18} />
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        <div>
-                          <label className="block text-[#694e35] font-bold mb-2">Fotos</label>
-                          <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            onChange={async (e) => {
-                              const files = e.target.files;
-                              if (!files || !activeCompanyId || !editingOrderId) return;
-                              const newPhotos = [...photos];
-                              for (let i = 0; i < files.length; i++) {
-                                const url = await supabaseDataLayer.uploadPhoto(files[i], activeCompanyId, editingOrderId);
-                                if (url) newPhotos.push(url);
-                              }
-                              setPhotos(newPhotos);
-                            }}
-                            className="hidden"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            className="flex items-center gap-2 px-4 py-2 bg-yellow-500 text-[#520f0f] rounded-lg hover:bg-yellow-400 transition-colors mb-3"
-                          >
-                            <Camera size={18} />
-                            Agregar Fotos
-                          </button>
-                          {photos.length > 0 && (
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                              {photos.map((photo, index) => (
-                                <div key={index} className="relative">
-                                  <img
-                                    src={photo}
-                                    alt={`Photo ${index + 1}`}
-                                    className="w-full h-32 object-cover rounded-lg border-2 border-[#d4caaf]"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => setPhotos(photos.filter((_, i) => i !== index))}
-                                    className="absolute top-1 right-1 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
-                                  >
-                                    <X size={16} />
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-
-                        <div>
-                          <label className="block text-[#694e35] font-bold mb-2">Firma del Cliente</label>
-                          <SignaturePad onSave={setSignature} initialSignature={signature} />
-                        </div>
-
-                        <div className="flex flex-wrap gap-3 pt-4 border-t border-[#d4caaf]">
-                          <button
-                            onClick={() => handleSaveChanges(order.id)}
-                            className="flex items-center gap-2 px-6 py-3 bg-yellow-500 text-[#520f0f] rounded-lg font-bold hover:bg-yellow-400 transition-colors focus:outline-none focus:ring-2 focus:ring-[#520f0f]"
-                          >
-                            <Save size={18} />
-                            Guardar Cambios
-                          </button>
-
-                          {order.status === 'In Progress' && (
-                            <>
-                              <button
-                                onClick={() => handleComplete(order)}
-                                className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-800"
-                              >
-                                <CheckCircle size={18} />
-                                Completar Tarea
-                              </button>
-
-                              <button
-                                onClick={() => handleRevisit(order)}
-                                className="flex items-center gap-2 px-6 py-3 bg-yellow-600 text-[#520f0f] rounded-lg font-bold hover:bg-yellow-500 transition-colors focus:outline-none focus:ring-2 focus:ring-[#520f0f]"
-                              >
-                                <RotateCcw size={18} />
-                                Revisita
-                              </button>
-                            </>
-                          )}
-                        </div>
+                        )}
                       </div>
-                    )}
 
-                    {/* (Intencional) No se muestran detalles fuera del modo edición */}
-                  </div>
-                )}
+                      <div>
+                        <label className="block text-[#694e35] font-bold mb-2">Firma del Cliente</label>
+                        <SignaturePad onSave={setSignature} initialSignature={signature} />
+                      </div>
+
+                      <div className="flex flex-wrap gap-3 pt-4 border-t border-[#d4caaf]">
+                        <button
+                          onClick={() => handleSaveChanges(order.id)}
+                          className="flex items-center gap-2 px-6 py-3 bg-yellow-500 text-[#520f0f] rounded-lg font-bold hover:bg-yellow-400 transition-colors focus:outline-none focus:ring-2 focus:ring-[#520f0f]"
+                        >
+                          <Save size={18} />
+                          Guardar Cambios
+                        </button>
+
+                        {order.status === 'In Progress' && (
+                          <>
+                            <button
+                              onClick={() => handleComplete(order)}
+                              className="flex items-center gap-2 px-6 py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition-colors focus:outline-none focus:ring-2 focus:ring-green-800"
+                            >
+                              <CheckCircle size={18} />
+                              Completar Tarea
+                            </button>
+
+                            <button
+                              onClick={() => handleRevisit(order)}
+                              className="flex items-center gap-2 px-6 py-3 bg-yellow-600 text-[#520f0f] rounded-lg font-bold hover:bg-yellow-500 transition-colors focus:outline-none focus:ring-2 focus:ring-[#520f0f]"
+                            >
+                              <RotateCcw size={18} />
+                              Revisita
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
