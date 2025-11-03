@@ -10,7 +10,6 @@ import {
 } from '../lib/dataLayer';
 import { ArrowLeft, FileText, Paperclip, Package, History, Edit } from 'lucide-react';
 import DownloadWorkOrderPDF from '../components/downloadpdf';
-
 import RemitoRenderer from '../components/RemitoRenderer';
 
 export default function WorkOrderDetail() {
@@ -24,12 +23,13 @@ export default function WorkOrderDetail() {
   const [elevatorHistory, setElevatorHistory] = useState<ElevatorHistory[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'attachments' | 'parts' | 'history'>('overview');
   const [error, setError] = useState<string | null>(null);
-// ⬇️ Estados para el remito
-const [showRemito, setShowRemito] = useState(false);
-const [remitoTemplate, setRemitoTemplate] = useState<any | null>(null);
-const [remitoNumber, setRemitoNumber] = useState<string | null>(null);
-const [loadingRemito, setLoadingRemito] = useState(false);
-const [remitoError, setRemitoError] = useState<string | null>(null);
+
+  // ⬇️ Estados para el remito
+  const [showRemito, setShowRemito] = useState(false);
+  const [remitoTemplate, setRemitoTemplate] = useState<any | null>(null);
+  const [remitoNumber, setRemitoNumber] = useState<string | null>(null);
+  const [loadingRemito, setLoadingRemito] = useState(false);
+  const [remitoError, setRemitoError] = useState<string | null>(null);
 
   const loadData = async () => {
     try {
@@ -62,37 +62,38 @@ const [remitoError, setRemitoError] = useState<string | null>(null);
       setError(e?.message ?? String(e));
     }
   };
-// ⬇️ Acción "Generar remito": busca template + número y abre el modal
-const handleOpenRemito = async () => {
-  if (!order) return;
-  try {
-    setRemitoError(null);
-    setLoadingRemito(true);
 
-    // 1) Plantilla por defecto de la empresa activa
-    const tpl = await dataLayer.getDefaultRemitoTemplate();
-    if (!tpl) {
-      throw new Error('No hay plantilla de remito configurada para esta empresa.');
+  // ⬇️ Acción "Generar remito": busca template + número y abre el modal
+  const handleOpenRemito = async () => {
+    if (!order) return;
+    try {
+      setRemitoError(null);
+      setLoadingRemito(true);
+
+      // 1) Plantilla por defecto de la empresa activa
+      const tpl = await dataLayer.getDefaultRemitoTemplate();
+      if (!tpl) {
+        throw new Error('No hay plantilla de remito configurada para esta empresa.');
+      }
+
+      // 2) Parsear fields si vinieron como string
+      const fields = typeof tpl.fields === 'string' ? JSON.parse(tpl.fields) : tpl.fields;
+
+      // 3) Obtener número secuencial
+      const n = await dataLayer.getNextRemitoNo();
+      const padded = String(n).padStart(8, '0');
+
+      // 4) Guardar en estado y abrir modal
+      setRemitoTemplate({ image_url: tpl.image_url, fields, name: tpl.name ?? 'Remito' });
+      setRemitoNumber(padded);
+      setShowRemito(true);
+    } catch (e: any) {
+      console.error('Remito error:', e);
+      setRemitoError(e?.message ?? String(e));
+    } finally {
+      setLoadingRemito(false);
     }
-
-    // 2) Parsear fields si vinieron como string
-    const fields = typeof tpl.fields === 'string' ? JSON.parse(tpl.fields) : tpl.fields;
-
-    // 3) Obtener número secuencial
-    const n = await dataLayer.getNextRemitoNo();
-    const padded = String(n).padStart(8, '0');
-
-    // 4) Guardar en estado y abrir modal
-    setRemitoTemplate({ image_url: tpl.image_url, fields, name: tpl.name ?? 'Remito' });
-    setRemitoNumber(padded);
-    setShowRemito(true);
-  } catch (e: any) {
-    console.error('Remito error:', e);
-    setRemitoError(e?.message ?? String(e));
-  } finally {
-    setLoadingRemito(false);
-  }
-};
+  };
 
   useEffect(() => {
     loadData();
@@ -258,55 +259,53 @@ const handleOpenRemito = async () => {
             {/* 1) Información del Reclamo + 2) Ubicación + 3) Asignación */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Información del Reclamo */}
-          {/* 1) Información del Reclamo */}
-<div>
-  <h3 className="font-bold text-[#694e35] mb-3">Información del Reclamo</h3>
-  <div className="space-y-2 text-sm">
-    <div>
-      <span className="text-[#5e4c1e]">Tipo:</span>{' '}
-      <span className="font-medium text-[#694e35]">
-        {getClaimTypeLabel(order.claimType)}
-      </span>
-    </div>
+              <div>
+                <h3 className="font-bold text-[#694e35] mb-3">Información del Reclamo</h3>
+                <div className="space-y-2 text-sm">
+                  <div>
+                    <span className="text-[#5e4c1e]">Tipo:</span>{' '}
+                    <span className="font-medium text-[#694e35]">
+                      {getClaimTypeLabel(order.claimType)}
+                    </span>
+                  </div>
 
-    {order.correctiveType && (
-      <div>
-        <span className="text-[#5e4c1e]">Tipo de Correctivo:</span>{' '}
-        <span className="font-medium text-[#694e35]">
-          {getCorrectiveTypeLabel(order.correctiveType)}
-        </span>
-      </div>
-    )}
+                  {order.correctiveType && (
+                    <div>
+                      <span className="text-[#5e4c1e]">Tipo de Correctivo:</span>{' '}
+                      <span className="font-medium text-[#694e35]">
+                        {getCorrectiveTypeLabel(order.correctiveType)}
+                      </span>
+                    </div>
+                  )}
 
-    <div>
-      <span className="text-[#5e4c1e]">Descripción:</span>{' '}
-      <span className="font-medium text-[#694e35]">{order.description}</span>
-    </div>
+                  <div>
+                    <span className="text-[#5e4c1e]">Descripción:</span>{' '}
+                    <span className="font-medium text-[#694e35]">{order.description}</span>
+                  </div>
 
-    {order.dateTime && (
-      <div>
-        <span className="text-[#5e4c1e]">Programada:</span>{' '}
-        <span className="font-medium text-[#694e35]">
-          {new Date(order.dateTime).toLocaleString('es-AR', {
-            day: '2-digit', month: '2-digit', year: 'numeric',
-            hour: '2-digit', minute: '2-digit',
-          })}
-        </span>
-      </div>
-    )}
+                  {order.dateTime && (
+                    <div>
+                      <span className="text-[#5e4c1e]">Programada:</span>{' '}
+                      <span className="font-medium text-[#694e35]">
+                        {new Date(order.dateTime).toLocaleString('es-AR', {
+                          day: '2-digit', month: '2-digit', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit',
+                        })}
+                      </span>
+                    </div>
+                  )}
 
-    <div>
-      <span className="text-[#5e4c1e]">Creada:</span>{' '}
-      <span className="font-medium text-[#694e35]">
-        {new Date(order.createdAt).toLocaleString('es-AR', {
-          day: '2-digit', month: '2-digit', year: 'numeric',
-          hour: '2-digit', minute: '2-digit',
-        })}
-      </span>
-    </div>
-  </div>
-</div>
-
+                  <div>
+                    <span className="text-[#5e4c1e]">Creada:</span>{' '}
+                    <span className="font-medium text-[#694e35]">
+                      {new Date(order.createdAt).toLocaleString('es-AR', {
+                        day: '2-digit', month: '2-digit', year: 'numeric',
+                        hour: '2-digit', minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
+                </div>
+              </div>
 
               {/* Ubicación */}
               <div>
@@ -410,7 +409,7 @@ const handleOpenRemito = async () => {
               )}
             </div>
 
-            {/* Comentarios (si querés arriba de Firma, dejalo aquí) */}
+            {/* Comentarios */}
             {order.comments && (
               <div>
                 <h3 className="font-bold text-[#694e35] mb-3">Comentarios</h3>
@@ -420,7 +419,7 @@ const handleOpenRemito = async () => {
               </div>
             )}
 
-            {/* Firma del Cliente (al final del contenido) */}
+            {/* Firma del Cliente */}
             {order.signatureDataUrl && (
               <div>
                 <h3 className="font-bold text-[#694e35] mb-3">Firma del Cliente</h3>
@@ -432,59 +431,59 @@ const handleOpenRemito = async () => {
               </div>
             )}
 
-     {/* Botones al final del resumen */}
-<div className="pt-2 flex flex-wrap gap-3">
-  <DownloadWorkOrderPDF
-    order={order}
-    building={building}
-    elevator={elevator}
-    technician={technician}
-    companyName="SubiTec"
-    className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-4 py-2 font-bold text-[#520f0f] hover:bg-yellow-400"
-    label="Descargar PDF"
-  />
+            {/* Botones al final del resumen */}
+            <div className="pt-2 flex flex-wrap gap-3">
+              <DownloadWorkOrderPDF
+                order={order}
+                building={building}
+                elevator={elevator}
+                technician={technician}
+                companyName="SubiTec"
+                className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-4 py-2 font-bold text-[#520f0f] hover:bg-yellow-400"
+                label="Descargar PDF"
+              />
 
-  <button
-    onClick={handleOpenRemito}
-    disabled={loadingRemito}
-    className="inline-flex items-center gap-2 rounded-lg bg-[#fcca53] px-4 py-2 font-bold text-[#694e35] hover:bg-[#ffe5a5] disabled:opacity-60"
-  >
-    {loadingRemito ? 'Generando remito...' : 'Generar Remito'}
-  </button>
+              <button
+                onClick={handleOpenRemito}
+                disabled={loadingRemito}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#fcca53] px-4 py-2 font-bold text-[#694e35] hover:bg-[#ffe5a5] disabled:opacity-60"
+              >
+                {loadingRemito ? 'Generando remito...' : 'Generar Remito'}
+              </button>
 
-  {remitoError && (
-    <span className="text-red-700 text-sm">{remitoError}</span>
-  )}
-</div>
+              {remitoError && (
+                <span className="text-red-700 text-sm">{remitoError}</span>
+              )}
+            </div>
 
-{/* Modal Remito */}
-{showRemito && remitoTemplate && (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-    <div className="w-full max-w-4xl rounded-xl bg-white p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="font-bold text-[#694e35]">
-          {remitoTemplate?.name ?? 'Remito'}
-          {remitoNumber ? ` · Nº ${remitoNumber}` : ''}
-        </h3>
-        <button
-          onClick={() => setShowRemito(false)}
-          className="rounded px-3 py-1 border border-[#d4caaf] hover:bg-[#f4ead0]"
-        >
-          Cerrar
-        </button>
-      </div>
+            {/* Modal Remito */}
+            {showRemito && remitoTemplate && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                <div className="w-full max-w-4xl rounded-xl bg-white p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-bold text-[#694e35]">
+                      {remitoTemplate?.name ?? 'Remito'}
+                      {remitoNumber ? ` · Nº ${remitoNumber}` : ''}
+                    </h3>
+                    <button
+                      onClick={() => setShowRemito(false)}
+                      className="rounded px-3 py-1 border border-[#d4caaf] hover:bg-[#f4ead0]"
+                    >
+                      Cerrar
+                    </button>
+                  </div>
 
-      {/* Render del remito (imagen + datos de la orden) */}
-      <RemitoRenderer
-        order={order}
-        building={building ?? undefined}
-        template={remitoTemplate}
-        remitoNumber={remitoNumber ?? undefined}
-      />
-    </div>
-  </div>
-)}
-
+                  <RemitoRenderer
+                    order={order}
+                    building={building ?? undefined}
+                    template={remitoTemplate}
+                    remitoNumber={remitoNumber ?? undefined}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {activeTab === 'attachments' && (
           <div className="space-y-4">
@@ -566,5 +565,6 @@ const handleOpenRemito = async () => {
         )}
         {/* ===== Fin contenido por tab ===== */}
       </div>
+    </div>   {/* <-- ESTE </div> FALTABA (cierra el contenedor externo) */}
   );
 }
