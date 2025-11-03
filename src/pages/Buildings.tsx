@@ -610,9 +610,10 @@ export default function Buildings() {
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         {getBuildingEquipments(building.id).map((equipment) => (
-                          <div
+                          <Link
                             key={equipment.id}
-                            className="bg-white p-4 rounded-lg border-2 border-[#d4caaf] hover:border-[#fcca53] transition-colors"
+                            to={`/equipment/${equipment.id}`}
+                            className="bg-white p-4 rounded-lg border-2 border-[#d4caaf] hover:border-[#fcca53] transition-colors focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
                           >
                             <div className="flex items-start justify-between mb-2">
                               <span className="text-sm font-bold text-[#fcca53] uppercase">{getEquipmentTypeLabel(equipment.type)}</span>
@@ -625,7 +626,7 @@ export default function Buildings() {
                               {equipment.serialNumber && <div>Serie: {equipment.serialNumber}</div>}
                               {equipment.capacity && <div>Capacidad: {equipment.capacity}</div>}
                             </div>
-                          </div>
+                          </Link>
                         ))}
                       </div>
                     )}

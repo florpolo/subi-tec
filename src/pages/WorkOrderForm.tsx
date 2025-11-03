@@ -1,6 +1,6 @@
 import { useState, FormEvent, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { dataLayer, Building, Elevator, EquipmentType } from '../lib/dataLayer';
+import { dataLayer, Building, Elevator, Equipment, EquipmentType } from '../lib/dataLayer';
 import { ArrowLeft, Plus, Search } from 'lucide-react';
 
 // Normaliza: minúsculas y sin acentos (p.ej. "Córdoba" -> "cordoba")
@@ -48,6 +48,7 @@ export default function WorkOrderForm() {
 
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [elevators, setElevators] = useState<Elevator[]>([]);
+  const [equipments, setEquipments] = useState<Equipment[]>([]);
   const [technicians, setTechnicians] = useState<any[]>([]);
   // ⬇️ Binario: solo 'free' | 'busy'
   const [technicianStatuses, setTechnicianStatuses] = useState<Record<string, 'free' | 'busy'>>({});
@@ -133,15 +134,20 @@ export default function WorkOrderForm() {
   }, [isEditMode, id]);
 
   useEffect(() => {
-    const loadElevators = async () => {
+    const loadEquipments = async () => {
       if (buildingId) {
-        const elevatorsList = await dataLayer.listElevators(buildingId);
+        const [elevatorsList, equipmentsList] = await Promise.all([
+          dataLayer.listElevators(buildingId),
+          dataLayer.listEquipments(buildingId)
+        ]);
         setElevators(elevatorsList);
+        setEquipments(equipmentsList.filter(e => e.type !== 'elevator'));
       } else {
         setElevators([]);
+        setEquipments([]);
       }
     };
-    loadElevators();
+    loadEquipments();
   }, [buildingId]);
 
   const handleCreateBuilding = async () => {
@@ -201,14 +207,14 @@ export default function WorkOrderForm() {
       setNewElevatorNumber(1);
       setNewElevatorLocation('');
     } else {
-      if (!newEquipmentName || !newEquipmentLocation) {
-        alert('El nombre y la ubicación/descripción son obligatorios');
+      if (!newEquipmentLocation) {
+        alert('La ubicación es obligatoria');
         return;
       }
-      await dataLayer.createEquipment({
+      const newEquipment = await dataLayer.createEquipment({
         buildingId,
         type: equipmentType,
-        name: newEquipmentName.trim(),
+        name: newEquipmentName.trim() || `${getEquipmentTypeLabel(equipmentType)} ${equipments.length + 1}`,
         locationDescription: newEquipmentLocation.trim(),
         brand: newEquipmentBrand.trim() || null,
         model: newEquipmentModel.trim() || null,
@@ -216,7 +222,10 @@ export default function WorkOrderForm() {
         capacity: newEquipmentCapacity.trim() ? parseFloat(newEquipmentCapacity) : null,
         status: 'fit',
       });
-      alert('Equipo genérico creado exitosamente (no se asignará a la orden de trabajo)');
+      if (newEquipment) {
+        setEquipments([...equipments, newEquipment]);
+        alert('Equipo creado exitosamente');
+      }
       setShowNewElevatorForm(false);
       setNewEquipmentName('');
       setNewEquipmentLocation('');
@@ -225,6 +234,19 @@ export default function WorkOrderForm() {
       setNewEquipmentSerial('');
       setNewEquipmentCapacity('');
     }
+  };
+
+  const getEquipmentTypeLabel = (type: EquipmentType): string => {
+    const labels: Record<EquipmentType, string> = {
+      elevator: 'Ascensor',
+      water_pump: 'Bomba de agua',
+      freight_elevator: 'Montacarga',
+      car_lift: 'Montacoche',
+      dumbwaiter: 'Montaplatos',
+      camillero: 'Camillero',
+      other: 'Otro',
+    };
+    return labels[type] || type;
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -480,7 +502,7 @@ export default function WorkOrderForm() {
               {buildingId && (
                 <div>
                   <label className="block text-[#694e35] font-bold mb-2">
-                    Ascensor <span className="text-red-600">*</span>
+                    Equipos <span className="text-red-600">*</span>
                   </label>
                   <div className="flex gap-2">
                     <select
@@ -488,12 +510,25 @@ export default function WorkOrderForm() {
                       onChange={(e) => setElevatorId(e.target.value)}
                       className="flex-1 px-4 py-3 bg-white border-2 border-[#d4caaf] rounded-lg text-[#694e35] focus:outline-none focus:ring-2 focus:ring-[#fcca53] focus:border-transparent"
                     >
-                      <option value="">Seleccione un ascensor</option>
-                      {elevators.map((elevator) => (
-                        <option key={elevator.id} value={elevator.id}>
-                          {elevator.number} — {elevator.locationDescription}
-                        </option>
-                      ))}
+                      <option value="">Seleccione un equipo</option>
+                      {elevators.length > 0 && (
+                        <optgroup label="Ascensores">
+                          {elevators.map((elevator) => (
+                            <option key={elevator.id} value={elevator.id}>
+                              Ascensor #{elevator.number} — {elevator.locationDescription}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {equipments.length > 0 && (
+                        <optgroup label="Otros equipos">
+                          {equipments.map((equipment) => (
+                            <option key={equipment.id} value={equipment.id}>
+                              {getEquipmentTypeLabel(equipment.type)}: {equipment.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
                     </select>
                     <button
                       type="button"
@@ -546,7 +581,7 @@ export default function WorkOrderForm() {
                         <>
                           <input
                             type="text"
-                            placeholder="Nombre *"
+                            placeholder="Nombre (opcional, se genera automáticamente)"
                             value={newEquipmentName}
                             onChange={(e) => setNewEquipmentName(e.target.value)}
                             className="w-full px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
@@ -560,28 +595,14 @@ export default function WorkOrderForm() {
                           />
                           <input
                             type="text"
-                            placeholder="Marca"
+                            placeholder="Marca (opcional)"
                             value={newEquipmentBrand}
                             onChange={(e) => setNewEquipmentBrand(e.target.value)}
                             className="w-full px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
                           />
                           <input
                             type="text"
-                            placeholder="Modelo"
-                            value={newEquipmentModel}
-                            onChange={(e) => setNewEquipmentModel(e.target.value)}
-                            className="w-full px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
-                          />
-                          <input
-                            type="text"
-                            placeholder="N.º de serie"
-                            value={newEquipmentSerial}
-                            onChange={(e) => setNewEquipmentSerial(e.target.value)}
-                            className="w-full px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
-                          />
-                          <input
-                            type="text"
-                            placeholder="Capacidad"
+                            placeholder="Capacidad (opcional)"
                             value={newEquipmentCapacity}
                             onChange={(e) => setNewEquipmentCapacity(e.target.value)}
                             className="w-full px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"

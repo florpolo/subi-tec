@@ -7,6 +7,7 @@ import WorkOrderForm from './pages/WorkOrderForm';
 import Buildings from './pages/Buildings';
 import BuildingForm from './pages/BuildingForm';
 import ElevatorDetail from './pages/ElevatorDetail';
+import EquipmentDetail from './pages/EquipmentDetail';
 import Technicians from './pages/Technicians';
 import TechnicianForm from './pages/TechnicianForm';
 import TechnicianDetail from './pages/TechnicianDetail';
@@ -59,6 +60,7 @@ function AppRoutes() {
       <Route path="/buildings" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><Buildings /></Layout></ProtectedRoute>} />
       <Route path="/buildings/new" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><BuildingForm /></Layout></ProtectedRoute>} />
       <Route path="/elevators/:id" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><ElevatorDetail /></Layout></ProtectedRoute>} />
+      <Route path="/equipment/:id" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><EquipmentDetail /></Layout></ProtectedRoute>} />
       <Route path="/technicians" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><Technicians /></Layout></ProtectedRoute>} />
       <Route path="/technicians/new" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><TechnicianForm /></Layout></ProtectedRoute>} />
       <Route path="/technicians/:id" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><TechnicianDetail /></Layout></ProtectedRoute>} />
