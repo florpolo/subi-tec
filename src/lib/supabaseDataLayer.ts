@@ -443,7 +443,6 @@ export const supabaseDataLayer = {
   },
 //Remitos
 
-  // +++ AGREGAR:
 export async function getDefaultRemitoTemplate(companyId: string) {
   const { data, error } = await supabase
     .from("remito_templates")
