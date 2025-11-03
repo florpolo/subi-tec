@@ -566,6 +566,5 @@ const handleOpenRemito = async () => {
         )}
         {/* ===== Fin contenido por tab ===== */}
       </div>
-    </div>
   );
 }
