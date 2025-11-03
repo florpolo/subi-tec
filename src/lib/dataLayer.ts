@@ -1,3 +1,4 @@
+tengo esto en datalayer
 import { supabaseDataLayer } from './supabaseDataLayer';
 import type {
   Building as SupabaseBuilding,
@@ -281,11 +282,10 @@ export function createDataLayer(companyId: string) {
       return technicians.map(mapTechnician);
     },
 
-getTechnicianStatus: async (technicianId: string): Promise<'free' | 'busy'> => {
-  const status = await supabaseDataLayer.getTechnicianStatus(technicianId, companyId);
-  return status;
-},
-
+    getTechnician: async (id: string): Promise<Technician | null> => {
+      const technician = await supabaseDataLayer.getTechnician(id, companyId);
+      return technician ? mapTechnician(technician) : null;
+    },
 
     createTechnician: async (technician: Omit<Technician, 'id'>): Promise<Technician | null> => {
       const result = await supabaseDataLayer.createTechnician(
