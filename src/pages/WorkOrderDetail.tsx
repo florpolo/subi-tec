@@ -11,6 +11,8 @@ import {
 import { ArrowLeft, FileText, Paperclip, Package, History, Edit } from 'lucide-react';
 import DownloadWorkOrderPDF from '../components/downloadpdf';
 
+import RemitoRenderer from '../components/RemitoRenderer';
+
 export default function WorkOrderDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -22,6 +24,12 @@ export default function WorkOrderDetail() {
   const [elevatorHistory, setElevatorHistory] = useState<ElevatorHistory[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'attachments' | 'parts' | 'history'>('overview');
   const [error, setError] = useState<string | null>(null);
+// ⬇️ Estados para el remito
+const [showRemito, setShowRemito] = useState(false);
+const [remitoTemplate, setRemitoTemplate] = useState<any | null>(null);
+const [remitoNumber, setRemitoNumber] = useState<string | null>(null);
+const [loadingRemito, setLoadingRemito] = useState(false);
+const [remitoError, setRemitoError] = useState<string | null>(null);
 
   const loadData = async () => {
     try {
@@ -54,6 +62,37 @@ export default function WorkOrderDetail() {
       setError(e?.message ?? String(e));
     }
   };
+// ⬇️ Acción "Generar remito": busca template + número y abre el modal
+const handleOpenRemito = async () => {
+  if (!order) return;
+  try {
+    setRemitoError(null);
+    setLoadingRemito(true);
+
+    // 1) Plantilla por defecto de la empresa activa
+    const tpl = await dataLayer.getDefaultRemitoTemplate();
+    if (!tpl) {
+      throw new Error('No hay plantilla de remito configurada para esta empresa.');
+    }
+
+    // 2) Parsear fields si vinieron como string
+    const fields = typeof tpl.fields === 'string' ? JSON.parse(tpl.fields) : tpl.fields;
+
+    // 3) Obtener número secuencial
+    const n = await dataLayer.getNextRemitoNo();
+    const padded = String(n).padStart(8, '0');
+
+    // 4) Guardar en estado y abrir modal
+    setRemitoTemplate({ image_url: tpl.image_url, fields, name: tpl.name ?? 'Remito' });
+    setRemitoNumber(padded);
+    setShowRemito(true);
+  } catch (e: any) {
+    console.error('Remito error:', e);
+    setRemitoError(e?.message ?? String(e));
+  } finally {
+    setLoadingRemito(false);
+  }
+};
 
   useEffect(() => {
     loadData();
@@ -393,22 +432,59 @@ export default function WorkOrderDetail() {
               </div>
             )}
 
-            {/* Botón Descargar PDF (al final de TODO el resumen) */}
-            <div className="pt-2">
-         <DownloadWorkOrderPDF
-  order={order}
-  building={building}
-  elevator={elevator}
-  technician={technician}
-  companyName="SubiTec"            // <- o lo que corresponda
-  // companyName={building?.name}  // <- si querés usar el nombre del cliente/consorcio
-  className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-4 py-2 font-bold text-[#520f0f] hover:bg-yellow-400"
-  label="Descargar PDF"
-/>
+     {/* Botones al final del resumen */}
+<div className="pt-2 flex flex-wrap gap-3">
+  <DownloadWorkOrderPDF
+    order={order}
+    building={building}
+    elevator={elevator}
+    technician={technician}
+    companyName="SubiTec"
+    className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-4 py-2 font-bold text-[#520f0f] hover:bg-yellow-400"
+    label="Descargar PDF"
+  />
 
-            </div>
-          </div>
-        )}
+  <button
+    onClick={handleOpenRemito}
+    disabled={loadingRemito}
+    className="inline-flex items-center gap-2 rounded-lg bg-[#fcca53] px-4 py-2 font-bold text-[#694e35] hover:bg-[#ffe5a5] disabled:opacity-60"
+  >
+    {loadingRemito ? 'Generando remito...' : 'Generar Remito'}
+  </button>
+
+  {remitoError && (
+    <span className="text-red-700 text-sm">{remitoError}</span>
+  )}
+</div>
+
+{/* Modal Remito */}
+{showRemito && remitoTemplate && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div className="w-full max-w-4xl rounded-xl bg-white p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="font-bold text-[#694e35]">
+          {remitoTemplate?.name ?? 'Remito'}
+          {remitoNumber ? ` · Nº ${remitoNumber}` : ''}
+        </h3>
+        <button
+          onClick={() => setShowRemito(false)}
+          className="rounded px-3 py-1 border border-[#d4caaf] hover:bg-[#f4ead0]"
+        >
+          Cerrar
+        </button>
+      </div>
+
+      {/* Render del remito (imagen + datos de la orden) */}
+      <RemitoRenderer
+        order={order}
+        building={building ?? undefined}
+        template={remitoTemplate}
+        remitoNumber={remitoNumber ?? undefined}
+      />
+    </div>
+  </div>
+)}
+
 
         {activeTab === 'attachments' && (
           <div className="space-y-4">
