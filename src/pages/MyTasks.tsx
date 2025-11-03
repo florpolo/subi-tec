@@ -389,6 +389,12 @@ export default function MyTasks() {
             const isExpanded = expandedOrderId === order.id;
             const building = getBuilding(order.building_id);
 
+            // Teléfono de contacto para mostrar en la tarjeta
+            const contactPhone =
+              (order as any).contact_phone ||
+              (building as any)?.contact_phone ||
+              '';
+
             return (
               <div key={order.id} className="bg-white rounded-xl shadow-lg border-2 border-gray-300 overflow-hidden">
                 <div className="p-6">
@@ -417,14 +423,19 @@ export default function MyTasks() {
                         </div>
                       </div>
 
-                      <p className="text-[#694e35] font-medium">{getClaimTypeLabel(order.claim_type)}</p>
+                      {/* 👇 Título principal: Dirección del edificio */}
+                      <h3 className="text-2xl font-bold text-[#694e35]">{getBuildingName(order.building_id)}</h3>
+                      {/* Ascensor */}
+                      <p className="text-[#694e35]">Ascensor: {getElevatorInfo(order.elevator_id)}</p>
+                      {/* Descripción */}
                       <p className="text-sm text-[#5e4c1e]">{order.description}</p>
 
                       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-[#5e4c1e]">
-                        <span>Edificio: {getBuildingName(order.building_id)}</span>
-                        <span>Ascensor: {getElevatorInfo(order.elevator_id)}</span>
                         {building?.entry_hours && (
                           <span>Horario de ingreso: <span className="font-medium">{building.entry_hours}</span></span>
+                        )}
+                        {contactPhone && (
+                          <span>Teléfono: <span className="font-medium">{contactPhone}</span></span>
                         )}
 
                         {/* Fecha programada */}
@@ -434,18 +445,36 @@ export default function MyTasks() {
                             {formatBA(order.date_time)}
                           </span>
                         )}
-
-                        {/* ✅ NUEVO: fecha de finalización para Completadas */}
-                        {order.status === 'Completed' && order.finish_time && (
-                          <span className="flex items-center gap-1">
-                            <Clock size={14} />
-                            Finalizada: {formatBA(order.finish_time)}
-                          </span>
-                        )}
                       </div>
                     </div>
 
-                    <div className="flex gap-2">
+                    {/* Acciones visibles siempre */}
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExpandedOrderId(order.id);
+                          setShowHistoryForElevator(prev => (prev === order.elevator_id ? null : order.elevator_id));
+                        }}
+                        className="flex items-center gap-2 px-4 py-2 bg-gray-300 text-[#520f0f] rounded-lg font-medium hover:bg-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-[#520f0f]"
+                      >
+                        <HistoryIcon size={18} />
+                        Historial del ascensor
+                      </button>
+
+                      {(order.status === 'In Progress' || order.status === 'Completed') && editingOrderId !== order.id && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEdit(order);
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 bg-yellow-500 text-[#520f0f] rounded-lg font-bold hover:bg-yellow-400 transition-colors focus:outline-none focus:ring-2 focus:ring-[#520f0f]"
+                        >
+                          <Save size={18} />
+                          Editar Tarea
+                        </button>
+                      )}
+
                       {order.status === 'Pending' && (
                         <button
                           type="button"
@@ -466,29 +495,7 @@ export default function MyTasks() {
                 {isExpanded && (
                   <div className="border-t-2 border-[#d4caaf] p-6 bg-white space-y-6">
                     <div className="flex flex-wrap gap-3">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setShowHistoryForElevator(showHistoryForElevator === order.elevator_id ? null : order.elevator_id);
-                        }}
-                        className="flex items-center gap-2 px-4 py-2 bg-gray-300 text-[#520f0f] rounded-lg font-medium hover:bg-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-[#520f0f]"
-                      >
-                        <HistoryIcon size={18} />
-                        Historial del ascensor
-                      </button>
-
-                      {(order.status === 'In Progress' || order.status === 'Completed') && editingOrderId !== order.id && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleEdit(order);
-                          }}
-                          className="flex items-center gap-2 px-4 py-2 bg-yellow-500 text-[#520f0f] rounded-lg font-bold hover:bg-yellow-400 transition-colors focus:outline-none focus:ring-2 focus:ring-[#520f0f]"
-                        >
-                          <Save size={18} />
-                          Editar Tarea
-                        </button>
-                      )}
+                      {/* (botones ya están arriba; acá no duplicamos) */}
                     </div>
 
                     {/* Elevator History */}
@@ -512,7 +519,7 @@ export default function MyTasks() {
                                 </div>
                                 <p className="text-sm text-[#5e4c1e]">{entry.description}</p>
 
-                                {/* ✅ NUEVO: Ver detalle de OT aunque no sea del técnico */}
+                                {/* Ver detalle de OT desde historial */}
                                 {entry.work_order_id && (
                                   <button
                                     type="button"
