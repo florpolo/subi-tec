@@ -257,15 +257,19 @@ export default function WorkOrderForm() {
       return;
     }
 
+    const selectedEquipment = equipments.find(eq => eq.id === elevatorId);
+    const selectedElevator = elevators.find(el => el.id === elevatorId);
+    const isEquipmentType = !!selectedEquipment;
+
     try {
       if (isEditMode && id) {
         await dataLayer.updateWorkOrder(id, {
           claimType,
           correctiveType: claimType === 'Corrective' ? correctiveType : undefined,
           buildingId,
-          elevatorId,
+          elevatorId: isEquipmentType ? undefined : elevatorId,
+          equipmentId: isEquipmentType ? elevatorId : undefined,
           technicianId: technicianId || undefined,
-          // ✅ Guardar en UTC para que no se corra la hora
           dateTime: dateTime ? baLocalToUtcIso(dateTime) : undefined,
           description,
           priority,
@@ -276,11 +280,11 @@ export default function WorkOrderForm() {
           claimType,
           correctiveType: claimType === 'Corrective' ? correctiveType : undefined,
           buildingId,
-          elevatorId,
+          elevatorId: isEquipmentType ? undefined : elevatorId,
+          equipmentId: isEquipmentType ? elevatorId : undefined,
           technicianId: technicianId || undefined,
-          contactName: '',  // si el esquema lo exige
+          contactName: '',
           contactPhone: '',
-          // ✅ Guardar en UTC para que no se corra la hora
           dateTime: dateTime ? baLocalToUtcIso(dateTime) : undefined,
           description,
           status: 'Pending',

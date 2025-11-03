@@ -40,11 +40,11 @@ export default function EquipmentDetail() {
 
     const [buildingData, allOrders] = await Promise.all([
       dataLayer.getBuilding(foundEquipment.buildingId),
-      dataLayer.listWorkOrders({ buildingId: foundEquipment.buildingId })
+      dataLayer.listWorkOrders({ equipmentId: id })
     ]);
 
     setBuilding(buildingData || null);
-    setWorkOrders(allOrders.filter(o => o.elevatorId === id));
+    setWorkOrders(allOrders);
   };
 
   useEffect(() => {

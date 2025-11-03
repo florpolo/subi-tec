@@ -45,7 +45,8 @@ export interface WorkOrder {
   claimType: 'Semiannual Tests' | 'Monthly Maintenance' | 'Corrective';
   correctiveType?: 'Minor Repair' | 'Refurbishment' | 'Installation';
   buildingId: string;
-  elevatorId: string;
+  elevatorId?: string;
+  equipmentId?: string;
   technicianId?: string;
   contactName: string;
   contactPhone: string;
@@ -139,7 +140,8 @@ function mapWorkOrder(w: SupabaseWorkOrder): WorkOrder {
     claimType: w.claim_type as 'Semiannual Tests' | 'Monthly Maintenance' | 'Corrective',
     correctiveType: w.corrective_type as 'Minor Repair' | 'Refurbishment' | 'Installation' | undefined,
     buildingId: w.building_id,
-    elevatorId: w.elevator_id,
+    elevatorId: w.elevator_id ?? undefined,
+    equipmentId: w.equipment_id ?? undefined,
     technicianId: w.technician_id ?? undefined,
     contactName: w.contact_name,
     contactPhone: w.contact_phone,
@@ -315,12 +317,16 @@ export function createDataLayer(companyId: string) {
       priority?: string;
       technicianId?: string;
       buildingId?: string;
+      elevatorId?: string;
+      equipmentId?: string;
     }): Promise<WorkOrder[]> => {
       const mappedFilters = filters ? {
         status: filters.status,
         priority: filters.priority,
         technician_id: filters.technicianId,
         building_id: filters.buildingId,
+        elevator_id: filters.elevatorId,
+        equipment_id: filters.equipmentId,
       } : undefined;
 
       const orders = await supabaseDataLayer.listWorkOrders(companyId, mappedFilters as any);
@@ -337,22 +343,23 @@ export function createDataLayer(companyId: string) {
         {
           company_id: companyId,
           claim_type: order.claimType,
-          corrective_type: order.correctiveType,
+          corrective_type: order.correctiveType || null,
           building_id: order.buildingId,
-          elevator_id: order.elevatorId,
-          technician_id: order.technicianId,
+          elevator_id: order.elevatorId || null,
+          equipment_id: order.equipmentId || null,
+          technician_id: order.technicianId || null,
           contact_name: order.contactName,
           contact_phone: order.contactPhone,
-          date_time: order.dateTime,
+          date_time: order.dateTime || null,
           description: order.description,
           status: order.status,
           priority: order.priority,
-          start_time: order.startTime,
-          finish_time: order.finishTime,
-          comments: order.comments,
-          parts_used: order.partsUsed,
-          photo_urls: order.photoUrls,
-          signature_data_url: order.signatureDataUrl,
+          start_time: order.startTime || null,
+          finish_time: order.finishTime || null,
+          comments: order.comments || null,
+          parts_used: order.partsUsed || null,
+          photo_urls: order.photoUrls || null,
+          signature_data_url: order.signatureDataUrl || null,
         } as any,
         companyId
       );
@@ -362,22 +369,23 @@ export function createDataLayer(companyId: string) {
     updateWorkOrder: async (id: string, updates: Partial<WorkOrder>): Promise<WorkOrder | null> => {
       const mappedUpdates: any = {};
       if (updates.claimType !== undefined) mappedUpdates.claim_type = updates.claimType;
-      if (updates.correctiveType !== undefined) mappedUpdates.corrective_type = updates.correctiveType;
+      if (updates.correctiveType !== undefined) mappedUpdates.corrective_type = updates.correctiveType || null;
       if (updates.buildingId !== undefined) mappedUpdates.building_id = updates.buildingId;
-      if (updates.elevatorId !== undefined) mappedUpdates.elevator_id = updates.elevatorId;
-      if (updates.technicianId !== undefined) mappedUpdates.technician_id = updates.technicianId;
+      if (updates.elevatorId !== undefined) mappedUpdates.elevator_id = updates.elevatorId || null;
+      if (updates.equipmentId !== undefined) mappedUpdates.equipment_id = updates.equipmentId || null;
+      if (updates.technicianId !== undefined) mappedUpdates.technician_id = updates.technicianId || null;
       if (updates.contactName !== undefined) mappedUpdates.contact_name = updates.contactName;
       if (updates.contactPhone !== undefined) mappedUpdates.contact_phone = updates.contactPhone;
-      if (updates.dateTime !== undefined) mappedUpdates.date_time = updates.dateTime;
+      if (updates.dateTime !== undefined) mappedUpdates.date_time = updates.dateTime || null;
       if (updates.description !== undefined) mappedUpdates.description = updates.description;
       if (updates.status !== undefined) mappedUpdates.status = updates.status;
       if (updates.priority !== undefined) mappedUpdates.priority = updates.priority;
-      if (updates.startTime !== undefined) mappedUpdates.start_time = updates.startTime;
-      if (updates.finishTime !== undefined) mappedUpdates.finish_time = updates.finishTime;
-      if (updates.comments !== undefined) mappedUpdates.comments = updates.comments;
-      if (updates.partsUsed !== undefined) mappedUpdates.parts_used = updates.partsUsed;
-      if (updates.photoUrls !== undefined) mappedUpdates.photo_urls = updates.photoUrls;
-      if (updates.signatureDataUrl !== undefined) mappedUpdates.signature_data_url = updates.signatureDataUrl;
+      if (updates.startTime !== undefined) mappedUpdates.start_time = updates.startTime || null;
+      if (updates.finishTime !== undefined) mappedUpdates.finish_time = updates.finishTime || null;
+      if (updates.comments !== undefined) mappedUpdates.comments = updates.comments || null;
+      if (updates.partsUsed !== undefined) mappedUpdates.parts_used = updates.partsUsed || null;
+      if (updates.photoUrls !== undefined) mappedUpdates.photo_urls = updates.photoUrls || null;
+      if (updates.signatureDataUrl !== undefined) mappedUpdates.signature_data_url = updates.signatureDataUrl || null;
 
       const result = await supabaseDataLayer.updateWorkOrder(id, mappedUpdates, companyId);
       return result ? mapWorkOrder(result) : null;

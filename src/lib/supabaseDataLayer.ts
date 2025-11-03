@@ -46,7 +46,8 @@ export interface WorkOrder {
   claim_type: 'Semiannual Tests' | 'Monthly Maintenance' | 'Corrective';
   corrective_type?: 'Minor Repair' | 'Refurbishment' | 'Installation';
   building_id: string;
-  elevator_id: string;
+  elevator_id?: string | null;
+  equipment_id?: string | null;
   technician_id?: string | null;
   contact_name: string;
   contact_phone: string;
@@ -304,6 +305,8 @@ export const supabaseDataLayer = {
       priority?: string;
       technician_id?: string;
       building_id?: string;
+      elevator_id?: string;
+      equipment_id?: string;
     }
   ): Promise<WorkOrder[]> {
     let q = supabase.from<WorkOrder>('work_orders').select('*').eq('company_id', companyId);
@@ -312,6 +315,8 @@ export const supabaseDataLayer = {
     if (filters?.priority) q = q.eq('priority', filters.priority);
     if (filters?.technician_id !== undefined) q = q.eq('technician_id', filters.technician_id);
     if (filters?.building_id) q = q.eq('building_id', filters.building_id);
+    if (filters?.elevator_id) q = q.eq('elevator_id', filters.elevator_id);
+    if (filters?.equipment_id) q = q.eq('equipment_id', filters.equipment_id);
 
     const { data, error } = await q.order('created_at', { ascending: false });
     if (error) throw error;
