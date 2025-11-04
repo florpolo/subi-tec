@@ -30,6 +30,8 @@ export default function WorkOrderDetail() {
   const [remitoNumber, setRemitoNumber] = useState<string | null>(null);
   const [loadingRemito, setLoadingRemito] = useState(false);
   const [remitoError, setRemitoError] = useState<string | null>(null);
+// TEMP de prueba (borralo o dejalo vacío cuando ande por DB)
+const FORCE_REMITO_URL = "https://qoxmccvysxjvraqchlhy.supabase.co/storage/v1/object/public/remitos/remito%20ascensores%20carballino.jpg"; // pegá acá el URL público del remito para testear
 
   const loadData = async () => {
     try {
@@ -63,18 +65,64 @@ export default function WorkOrderDetail() {
     }
   };
 
-  // ⬇️ Acción "Generar remito": busca template + número y abre el modal
-  const handleOpenRemito = async () => {
-    if (!order) return;
-    try {
-      setRemitoError(null);
-      setLoadingRemito(true);
+ // ⬇️ Acción "Generar remito": busca template + número y abre el modal
+const handleOpenRemito = async () => {
+  if (!order) return;
+  try {
+    setRemitoError(null);
+    setLoadingRemito(true);
 
-      // 1) Plantilla por defecto de la empresa activa
-      const tpl = await dataLayer.getDefaultRemitoTemplate();
-      if (!tpl) {
-        throw new Error('No hay plantilla de remito configurada para esta empresa.');
-      }
+    // --- Fallback manual para probar con una URL directa ---
+    if (FORCE_REMITO_URL) {
+      setRemitoTemplate({
+        image_url: FORCE_REMITO_URL,
+        name: 'Remito (manual)',
+        fields: {
+          number: { x:0.545, y:0.165, bold:true, fontSize:22 },
+          date: {
+            city:{x:0.135,y:0.256,label:"Buenos Aires,"},
+            day:{x:0.305,y:0.256},
+            month:{x:0.465,y:0.256},
+            y20:{x:0.645,y:0.256,label:"20"},
+            yy:{x:0.705,y:0.256}
+          },
+          addressLine:{ x:0.115,y:0.302, fontSize:16 },
+          addressNumber:{ x:0.655,y:0.302 },
+          descriptionBox:{ x:0.075,y:0.355, w:0.845, h:0.48, fontSize:15, lineHeight:18 },
+          signatureBox:{ x:0.605, y:0.86, w:0.28, h:0.07 }
+        }
+      });
+      setRemitoNumber("00000001"); // Número simulado para test
+      setShowRemito(true);
+      setLoadingRemito(false);
+      return; // <- evita seguir a Supabase
+    }
+    // --- Fin fallback ---
+
+    // 1) Plantilla por defecto de la empresa activa (Supabase)
+    const tpl = await dataLayer.getDefaultRemitoTemplate();
+    if (!tpl) {
+      throw new Error('No hay plantilla de remito configurada para esta empresa.');
+    }
+
+    // 2) Parsear fields si vienen como string
+    const fields = typeof tpl.fields === 'string' ? JSON.parse(tpl.fields) : tpl.fields;
+
+    // 3) Número secuencial (RPC)
+    const n = await dataLayer.getNextRemitoNo();
+    const padded = String(n).padStart(8, '0');
+
+    // 4) Mostrar modal
+    setRemitoTemplate({ image_url: tpl.image_url, fields, name: tpl.name ?? 'Remito' });
+    setRemitoNumber(padded);
+    setShowRemito(true);
+  } catch (e: any) {
+    console.error('Remito error:', e);
+    setRemitoError(e?.message ?? String(e));
+  } finally {
+    setLoadingRemito(false);
+  }
+};
 
       // 2) Parsear fields si vinieron como string
       const fields = typeof tpl.fields === 'string' ? JSON.parse(tpl.fields) : tpl.fields;
