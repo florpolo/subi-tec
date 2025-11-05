@@ -16,8 +16,8 @@ type Fields = {
   signatureBox?: { x:number; y:number; w:number; h:number };
 };
 
-type Template = { image_url: string; fields: Fields; name?: string; };
-type Order = { description?: string; createdAt?: string; dateTime?: string; finishTime?: string; signatureDataUrl?: string; };
+type Template = { image_url: string; fields: Fields; name?: string };
+type Order = { description?: string; createdAt?: string; dateTime?: string; finishTime?: string; signatureDataUrl?: string };
 type Props = { order: Order; building?: { address?: string }; template: Template; remitoNumber?: string };
 
 const meses = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
@@ -34,7 +34,8 @@ export default function RemitoRenderer({ order, building, template, remitoNumber
   useEffect(()=>{ const i=new Image(); i.crossOrigin="anonymous"; i.onload=()=>setBg(i); i.src=template.image_url; },[template.image_url]);
   useEffect(()=>{ const s=order.signatureDataUrl; if(!s){setSig(null);return;} if(s.startsWith("data:")) setSig(s); else toDataURL(s).then(setSig).catch(()=>setSig(null)); },[order.signatureDataUrl]);
 
-  useEffect(()=>{ const c=ref.current; if(!c||!bg) return;
+  useEffect(()=>{ 
+    const c=ref.current; if(!c||!bg) return;
     c.width=bg.naturalWidth; c.height=bg.naturalHeight;
     const ctx=c.getContext("2d")!;
     ctx.drawImage(bg,0,0,c.width,c.height); ctx.fillStyle="#000";
@@ -79,14 +80,58 @@ export default function RemitoRenderer({ order, building, template, remitoNumber
     }
   },[bg, template, order, building, sig, remitoNumber]);
 
-  const downloadPDF=()=>{ const c=ref.current; if(!c) return; const pdf=new jsPDF({unit:"pt",format:"a4"}); const W=pdf.internal.pageSize.getWidth(); const H=pdf.internal.pageSize.getHeight(); const d=c.toDataURL("image/jpeg",0.92); const w=W-60; const r=w/c.width; const h=c.height*r; const y=Math.max((H-h)/2,30); pdf.addImage(d,"JPEG",30,y,w,h); pdf.save("remito.pdf"); };
+  // ==== PDF helpers con ESCALADO CORRECTO ====
+  function addCanvasAsCenteredPDF(pdf: jsPDF, c: HTMLCanvasElement) {
+    const W = pdf.internal.pageSize.getWidth();
+    const H = pdf.internal.pageSize.getHeight();
+    const margin = 30;
+
+    const availW = W - margin * 2;
+    const availH = H - margin * 2;
+
+    const scale = Math.min(availW / c.width, availH / c.height);   // <- clave (fit ancho y alto)
+    const w = c.width * scale;
+    const h = c.height * scale;
+    const x = (W - w) / 2;
+    const y = (H - h) / 2;
+
+    const dataUrl = c.toDataURL("image/jpeg", 0.92);
+    pdf.addImage(dataUrl, "JPEG", x, y, w, h);
+  }
+
+  // Descargar
+  const handleDownload = () => {
+    const c = ref.current; if (!c) return;
+    const pdf = new jsPDF({ unit:"pt", format:"a4" });
+    addCanvasAsCenteredPDF(pdf, c);
+    const filename = `remito${remitoNumber ? `_${remitoNumber}` : ""}.pdf`;
+    pdf.save(filename);
+  };
+
+  // Abrir en nueva pestaña
+  const handleOpenInTab = () => {
+    const c = ref.current; if (!c) return;
+    const pdf = new jsPDF({ unit:"pt", format:"a4" });
+    addCanvasAsCenteredPDF(pdf, c);
+    const url = pdf.output("bloburl");
+    window.open(url, "_blank");
+  };
 
   return (
     <div>
-      <button onClick={downloadPDF} className="rounded bg-yellow-500 px-3 py-2 font-bold text-[#520f0f] hover:bg-yellow-400">
-        Descargar Remito (PDF)
-      </button>
-      <canvas ref={ref} style={{width:"100%", border:"1px solid #d4caaf", borderRadius:8, marginTop:8}}/>
+      <div className="flex flex-wrap gap-2">
+        <button onClick={handleOpenInTab} className="rounded bg-white border border-[#d4caaf] px-3 py-2 text-[#694e35] hover:bg-[#f4ead0]">
+          Ver en otra pestaña
+        </button>
+        <button onClick={handleDownload} className="rounded bg-yellow-500 px-3 py-2 font-bold text-[#520f0f] hover:bg-yellow-400">
+          Descargar Remito (PDF)
+        </button>
+      </div>
+
+      <canvas
+        ref={ref}
+        style={{width:"100%", border:"1px solid #d4caaf", borderRadius:8, marginTop:8}}
+      />
     </div>
   );
 }
