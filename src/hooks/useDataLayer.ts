@@ -5,7 +5,7 @@ import type {
   Elevator,
   Technician,
   WorkOrder,
-  ElevatorHistory,
+  ElevatorHistory
 } from '../lib/supabaseDataLayer';
 
 export function useDataLayer() {
