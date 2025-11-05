@@ -101,7 +101,14 @@ export interface Equipment {
 }
 
 /** ====== Utilidades ====== */
-const toNull = (v: any) => (v === undefined || v === '' || v === 'undefined' ? null : v);
+const toNull = (v: any) => {
+  if (v === undefined || v === null) return null;
+  if (typeof v === 'string') {
+    const s = v.trim().toLowerCase();
+    if (s === '' || s === 'undefined' || s === 'null') return null;
+  }
+  return v;
+};
 
 function dataUrlToBlob(dataUrl: string): Blob {
   // "data:image/png;base64,AAAA..."
@@ -294,88 +301,64 @@ export const supabaseDataLayer = {
   },
 
   // >>>>>>> ÚNICO CAMBIO IMPORTANTE: sin spread, mapeo explícito + saneo de UUIDs/opcionales
-  async createWorkOrder(
-    order: Omit<WorkOrder, 'id' | 'created_at'>,
-    companyId: string
-  ): Promise<WorkOrder | null> {
-    // Leer tanto snake_case como posibles camelCase que lleguen de capas superiores
-    const get = (a: any, snake: string, camel: string) =>
-      (a as any)[snake] ?? (a as any)[camel];
+async createWorkOrder(
+  order: Omit<WorkOrder, 'id' | 'created_at'>,
+  companyId: string
+): Promise<WorkOrder | null> {
+  // helper: permite leer snake o camel sin romper lo ya existente
+  const get = (a: any, snake: string, camel: string) =>
+    (a as any)[snake] ?? (a as any)[camel];
 
-    const payload: any = {
-      company_id: companyId,
+  // Armado explícito del payload (sin spread para no colar "undefined")
+  const payload: any = {
+    company_id: companyId,
 
-      claim_type:          get(order, 'claim_type', 'claimType'),
-      corrective_type:     toNull(get(order, 'corrective_type', 'correctiveType')),
+    claim_type:         get(order, 'claim_type', 'claimType'),
+    corrective_type:    toNull(get(order, 'corrective_type', 'correctiveType')),
 
-      building_id:         get(order, 'building_id', 'building_id') ?? get(order, 'buildingId', 'buildingId'),
+    // OJO: acá sí camel correcto
+    building_id:        get(order, 'building_id', 'buildingId'),
 
-      elevator_id:         toNull(get(order, 'elevator_id', 'elevatorId')),
-      equipment_id:        toNull(get(order, 'equipment_id', 'equipmentId')),
-      technician_id:       toNull(get(order, 'technician_id', 'technicianId')),
+    // Saneamos SIEMPRE los UUID opcionales
+    elevator_id:        toNull(get(order, 'elevator_id', 'elevatorId')),
+    equipment_id:       toNull(get(order, 'equipment_id', 'equipmentId')),
+    technician_id:      toNull(get(order, 'technician_id', 'technicianId')),
 
-      contact_name:        get(order, 'contact_name', 'contactName') ?? '',
-      contact_phone:       get(order, 'contact_phone', 'contactPhone') ?? '',
+    contact_name:       get(order, 'contact_name', 'contactName') ?? '',
+    contact_phone:      get(order, 'contact_phone', 'contactPhone') ?? '',
 
-      date_time:           toNull(get(order, 'date_time', 'dateTime')),
-      description:         get(order, 'description', 'description') ?? '',
-      status:              get(order, 'status', 'status') ?? 'Pending',
-      priority:            get(order, 'priority', 'priority') ?? 'Low',
+    date_time:          toNull(get(order, 'date_time', 'dateTime')),
+    description:        get(order, 'description', 'description') ?? '',
+    status:             get(order, 'status', 'status') ?? 'Pending',
+    priority:           get(order, 'priority', 'priority') ?? 'Low',
 
-      start_time:          toNull(get(order, 'start_time', 'startTime')),
-      finish_time:         toNull(get(order, 'finish_time', 'finishTime')),
+    start_time:         toNull(get(order, 'start_time', 'startTime')),
+    finish_time:        toNull(get(order, 'finish_time', 'finishTime')),
 
-      comments:            get(order, 'comments', 'comments') ?? null,
-      parts_used:          get(order, 'parts_used', 'partsUsed') ?? null,
-      photo_urls:          get(order, 'photo_urls', 'photoUrls') ?? null,
-      signature_data_url:  get(order, 'signature_data_url', 'signatureDataUrl') ?? null,
-    };
+    comments:           get(order, 'comments', 'comments') ?? null,
+    parts_used:         get(order, 'parts_used', 'partsUsed') ?? null,
+    photo_urls:         get(order, 'photo_urls', 'photoUrls') ?? null,
+    signature_data_url: get(order, 'signature_data_url', 'signatureDataUrl') ?? null,
+  };
 
-    // Validaciones defensivas
-    if (!payload.building_id) {
-      throw new Error('building_id es requerido para crear la orden');
-    }
-    if (!payload.elevator_id && !payload.equipment_id) {
-      throw new Error('Debés asignar un ascensor o un equipo a la orden');
-    }
+  // Guardas defensivas antes del insert
+  if (!payload.building_id) {
+    throw new Error('building_id es requerido para crear la orden');
+  }
+  if (!payload.elevator_id && !payload.equipment_id) {
+    throw new Error('Debés asignar un ascensor o un equipo a la orden');
+  }
 
-    const { data, error } = await supabase
-      .from<WorkOrder>('work_orders')
-      .insert(payload)
-      .select()
-      .maybeSingle();
+  const { data, error } = await supabase
+    .from<WorkOrder>('work_orders')
+    .insert(payload)       // objeto único ok
+    .select()
+    .maybeSingle();
 
-    if (error) throw error;
-    return data || null;
-  },
+  if (error) throw error;
+  return data || null;
+}
 
-  async updateWorkOrder(
-    id: string,
-    updates: Partial<WorkOrder>,
-    companyId: string
-  ): Promise<WorkOrder | null> {
-    const sanitized: any = { ...updates };
-    if ('elevator_id' in sanitized) sanitized.elevator_id = toNull(sanitized.elevator_id);
-    if ('equipment_id' in sanitized) sanitized.equipment_id = toNull(sanitized.equipment_id);
-    if ('technician_id' in sanitized) sanitized.technician_id = toNull(sanitized.technician_id);
-    if ('date_time' in sanitized) sanitized.date_time = toNull(sanitized.date_time);
-    if ('start_time' in sanitized) sanitized.start_time = toNull(sanitized.start_time);
-    if ('finish_time' in sanitized) sanitized.finish_time = toNull(sanitized.finish_time);
-    if ('comments' in sanitized) sanitized.comments = sanitized.comments ?? null;
-    if ('parts_used' in sanitized) sanitized.parts_used = sanitized.parts_used ?? null;
-    if ('photo_urls' in sanitized) sanitized.photo_urls = sanitized.photo_urls ?? null;
-    if ('signature_data_url' in sanitized) sanitized.signature_data_url = sanitized.signature_data_url ?? null;
-
-    const { data, error } = await supabase
-      .from<WorkOrder>('work_orders')
-      .update(sanitized)
-      .eq('company_id', companyId)
-      .eq('id', id)
-      .select()
-      .maybeSingle();
-    if (error) throw error;
-    return data || null;
-  },
 
   /* ========== Elevator History ========== */
   async addElevatorHistory(
