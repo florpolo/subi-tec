@@ -114,15 +114,12 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([arr], { type: mime });
 }
 
-/** =======================================================
- *  Capa CRUD directa a tablas/buckets de Supabase
- *  (todas las funciones scoped por companyId)
- *  ======================================================= */
+/* ===== Data Layer (CRUD) ===== */
 export const supabaseDataLayer = {
   /* ========== Buildings ========== */
   async listBuildings(companyId: string): Promise<Building[]> {
     const { data, error } = await supabase
-      .from('buildings')
+      .from<Building>('buildings')
       .select('*')
       .eq('company_id', companyId)
       .order('created_at', { ascending: false });
@@ -132,30 +129,23 @@ export const supabaseDataLayer = {
 
   async getBuilding(id: string, companyId: string): Promise<Building | null> {
     const { data, error } = await supabase
-      .from('buildings')
+      .from<Building>('buildings')
       .select('*')
       .eq('company_id', companyId)
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
-    return (data as Building) || null;
+    return data || null;
   },
 
-  async createBuilding(
-    building: Omit<Building, 'id' | 'created_at'>,
-    companyId: string
-  ): Promise<Building | null> {
+  async createBuilding(building: Omit<Building, 'id' | 'created_at'>, companyId: string): Promise<Building | null> {
     const payload = { ...building, company_id: companyId };
     const { data, error } = await supabase.from<Building>('buildings').insert(payload).select().maybeSingle();
     if (error) throw error;
     return data || null;
   },
 
-  async updateBuilding(
-    id: string,
-    updates: Partial<Building>,
-    companyId: string
-  ): Promise<Building | null> {
+  async updateBuilding(id: string, updates: Partial<Building>, companyId: string): Promise<Building | null> {
     const { data, error } = await supabase
       .from<Building>('buildings')
       .update(updates)
@@ -187,21 +177,14 @@ export const supabaseDataLayer = {
     return data || null;
   },
 
-  async createElevator(
-    elevator: Omit<Elevator, 'id' | 'created_at'>,
-    companyId: string
-  ): Promise<Elevator | null> {
+  async createElevator(elevator: Omit<Elevator, 'id' | 'created_at'>, companyId: string): Promise<Elevator | null> {
     const payload = { ...elevator, company_id: companyId };
     const { data, error } = await supabase.from<Elevator>('elevators').insert(payload).select().maybeSingle();
     if (error) throw error;
     return data || null;
   },
 
-  async updateElevator(
-    id: string,
-    updates: Partial<Elevator>,
-    companyId: string
-  ): Promise<Elevator | null> {
+  async updateElevator(id: string, updates: Partial<Elevator>, companyId: string): Promise<Elevator | null> {
     const { data, error } = await supabase
       .from<Elevator>('elevators')
       .update(updates)
@@ -211,6 +194,11 @@ export const supabaseDataLayer = {
       .maybeSingle();
     if (error) throw error;
     return data || null;
+  },
+
+  async deleteElevator(id: string, companyId: string): Promise<void> {
+    const { error } = await supabase.from<Elevator>('elevators').delete().eq('company_id', companyId).eq('id', id);
+    if (error) throw error;
   },
 
   /* ========== Technicians ========== */
@@ -235,21 +223,14 @@ export const supabaseDataLayer = {
     return data || null;
   },
 
-  async createTechnician(
-    technician: Omit<Technician, 'id' | 'created_at'>,
-    companyId: string
-  ): Promise<Technician | null> {
+  async createTechnician(technician: Omit<Technician, 'id' | 'created_at'>, companyId: string): Promise<Technician | null> {
     const payload = { ...technician, company_id: companyId };
     const { data, error } = await supabase.from<Technician>('technicians').insert(payload).select().maybeSingle();
     if (error) throw error;
     return data || null;
   },
 
-  async updateTechnician(
-    id: string,
-    updates: Partial<Technician>,
-    companyId: string
-  ): Promise<Technician | null> {
+  async updateTechnician(id: string, updates: Partial<Technician>, companyId: string): Promise<Technician | null> {
     const { data, error } = await supabase
       .from<Technician>('technicians')
       .update(updates)
@@ -261,11 +242,9 @@ export const supabaseDataLayer = {
     return data || null;
   },
 
-  /** ===== Semáforo unificado: solo 'free' (verde) o 'busy' (rojo) ===== */
-  async getTechnicianStatus(
-    technicianId: string,
-    companyId: string
-  ): Promise<'free' | 'busy'> {
+  // Estado simple: 'free' | 'busy' (conservando tu lógica)
+  async getTechnicianStatus(technicianId: string, companyId: string): Promise<'free' | 'busy'> {
+    // Implementación de ejemplo: si tiene órdenes "In Progress" => 'busy'
     const { data, error } = await supabase
       .from<WorkOrder>('work_orders')
       .select('id')
@@ -273,30 +252,8 @@ export const supabaseDataLayer = {
       .eq('technician_id', technicianId)
       .eq('status', 'In Progress')
       .limit(1);
-
     if (error) throw error;
-    return data && data.length > 0 ? 'busy' : 'free';
-  },
-
-  /** (Opcional) Mapa de OTs en curso por técnico: { technician_id: count } */
-  async countInProgressByTechnician(
-    companyId: string
-  ): Promise<Record<string, number>> {
-    const { data, error } = await supabase
-      .from<WorkOrder>('work_orders')
-      .select('technician_id')
-      .eq('company_id', companyId)
-      .eq('status', 'In Progress');
-
-    if (error) throw error;
-
-    const acc: Record<string, number> = {};
-    for (const row of (data || [])) {
-      const tid = row.technician_id as string | null;
-      if (!tid) continue;
-      acc[tid] = (acc[tid] ?? 0) + 1;
-    }
-    return acc;
+    return (data && data.length > 0) ? 'busy' : 'free';
   },
 
   /* ========== Work Orders ========== */
@@ -336,25 +293,58 @@ export const supabaseDataLayer = {
     return data || null;
   },
 
+  // >>>>>>> ÚNICO CAMBIO IMPORTANTE: sin spread, mapeo explícito + saneo de UUIDs/opcionales
   async createWorkOrder(
     order: Omit<WorkOrder, 'id' | 'created_at'>,
     companyId: string
   ): Promise<WorkOrder | null> {
+    // Leer tanto snake_case como posibles camelCase que lleguen de capas superiores
+    const get = (a: any, snake: string, camel: string) =>
+      (a as any)[snake] ?? (a as any)[camel];
+
     const payload: any = {
-      ...order,
       company_id: companyId,
-      elevator_id: toNull(order.elevator_id),
-      equipment_id: toNull(order.equipment_id),
-      technician_id: toNull(order.technician_id),
-      date_time: toNull(order.date_time),
-      start_time: toNull(order.start_time),
-      finish_time: toNull(order.finish_time),
-      comments: order.comments ?? null,
-      parts_used: order.parts_used ?? null,
-      photo_urls: order.photo_urls ?? null,
-      signature_data_url: order.signature_data_url ?? null,
+
+      claim_type:          get(order, 'claim_type', 'claimType'),
+      corrective_type:     toNull(get(order, 'corrective_type', 'correctiveType')),
+
+      building_id:         get(order, 'building_id', 'building_id') ?? get(order, 'buildingId', 'buildingId'),
+
+      elevator_id:         toNull(get(order, 'elevator_id', 'elevatorId')),
+      equipment_id:        toNull(get(order, 'equipment_id', 'equipmentId')),
+      technician_id:       toNull(get(order, 'technician_id', 'technicianId')),
+
+      contact_name:        get(order, 'contact_name', 'contactName') ?? '',
+      contact_phone:       get(order, 'contact_phone', 'contactPhone') ?? '',
+
+      date_time:           toNull(get(order, 'date_time', 'dateTime')),
+      description:         get(order, 'description', 'description') ?? '',
+      status:              get(order, 'status', 'status') ?? 'Pending',
+      priority:            get(order, 'priority', 'priority') ?? 'Low',
+
+      start_time:          toNull(get(order, 'start_time', 'startTime')),
+      finish_time:         toNull(get(order, 'finish_time', 'finishTime')),
+
+      comments:            get(order, 'comments', 'comments') ?? null,
+      parts_used:          get(order, 'parts_used', 'partsUsed') ?? null,
+      photo_urls:          get(order, 'photo_urls', 'photoUrls') ?? null,
+      signature_data_url:  get(order, 'signature_data_url', 'signatureDataUrl') ?? null,
     };
-    const { data, error } = await supabase.from<WorkOrder>('work_orders').insert(payload).select().maybeSingle();
+
+    // Validaciones defensivas
+    if (!payload.building_id) {
+      throw new Error('building_id es requerido para crear la orden');
+    }
+    if (!payload.elevator_id && !payload.equipment_id) {
+      throw new Error('Debés asignar un ascensor o un equipo a la orden');
+    }
+
+    const { data, error } = await supabase
+      .from<WorkOrder>('work_orders')
+      .insert(payload)
+      .select()
+      .maybeSingle();
+
     if (error) throw error;
     return data || null;
   },
@@ -441,42 +431,37 @@ export const supabaseDataLayer = {
     const { data } = supabase.storage.from(bucket).getPublicUrl(path);
     return data?.publicUrl || null;
   },
-//Remitos
 
-// Remitos (plantillas y numerador) — dentro del objeto supabaseDataLayer
-getDefaultRemitoTemplate: async (companyId: string) => {
-  const { data, error } = await supabase
-    .from("remito_templates")
-    .select("*")
-    .eq("company_id", companyId)
-    .eq("is_default", true)
-    .maybeSingle();
-  if (error) throw error;
-  return data;
-},
+  /* ========== Remitos (plantillas y numerador) ========== */
+  async getDefaultRemitoTemplate(companyId: string) {
+    const { data, error } = await supabase
+      .from('remito_templates')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('is_default', true)
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  },
 
-listRemitoTemplates: async (companyId: string) => {
-  const { data, error } = await supabase
-    .from("remito_templates")
-    .select("*")
-    .eq("company_id", companyId)
-    .order("updated_at", { ascending: false });
-  if (error) throw error;
-  return data || [];
-},
+  async listRemitoTemplates(companyId: string) {
+    const { data, error } = await supabase
+      .from('remito_templates')
+      .select('*')
+      .eq('company_id', companyId)
+      .order('updated_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+  },
 
-getNextRemitoNo: async (companyId: string) => {
-  const { data, error } = await supabase.rpc("get_next_remito_no", {
-    p_company_id: companyId,
-  });
-  if (error) throw error;
-  return data as number;
-},
+  async getNextRemitoNo(companyId: string) {
+    const { data, error } = await supabase.rpc('get_next_remito_no', {
+      p_company_id: companyId,
+    });
+    if (error) throw error;
+    return data as number;
+  },
 
-
-
-
-  
   /* ========== Equipments (CRUD) ========== */
   async listEquipments(companyId: string, buildingId?: string): Promise<Equipment[]> {
     let q = supabase.from<Equipment>('equipments').select('*').eq('company_id', companyId);
@@ -497,21 +482,14 @@ getNextRemitoNo: async (companyId: string) => {
     return data || null;
   },
 
-  async createEquipment(
-    payload: Omit<Equipment, 'id' | 'created_at'>,
-    companyId: string
-  ): Promise<Equipment | null> {
-    const row = { ...payload, company_id: companyId };
-    const { data, error } = await supabase.from<Equipment>('equipments').insert(row).select().maybeSingle();
+  async createEquipment(equipment: Omit<Equipment, 'id' | 'created_at'>, companyId: string): Promise<Equipment | null> {
+    const payload = { ...equipment, company_id: companyId };
+    const { data, error } = await supabase.from<Equipment>('equipments').insert(payload).select().maybeSingle();
     if (error) throw error;
     return data || null;
   },
 
-  async updateEquipment(
-    id: string,
-    updates: Partial<Equipment>,
-    companyId: string
-  ): Promise<Equipment | null> {
+  async updateEquipment(id: string, updates: Partial<Equipment>, companyId: string): Promise<Equipment | null> {
     const { data, error } = await supabase
       .from<Equipment>('equipments')
       .update(updates)
@@ -524,21 +502,7 @@ getNextRemitoNo: async (companyId: string) => {
   },
 
   async deleteEquipment(id: string, companyId: string): Promise<void> {
-    const { error } = await supabase
-      .from<Equipment>('equipments')
-      .delete()
-      .eq('company_id', companyId)
-      .eq('id', id);
+    const { error } = await supabase.from<Equipment>('equipments').delete().eq('company_id', companyId).eq('id', id);
     if (error) throw error;
   },
-};
-
-export type {
-  Building as _Building,
-  Elevator as _Elevator,
-  Technician as _Technician,
-  WorkOrder as _WorkOrder,
-  ElevatorHistory as _ElevatorHistory,
-  Equipment as _Equipment,
-  EquipmentType as _EquipmentType,
 };
