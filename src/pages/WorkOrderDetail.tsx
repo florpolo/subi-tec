@@ -6,7 +6,8 @@ import {
   Building,
   Elevator,
   Technician,
-  ElevatorHistory
+  ElevatorHistory,
+  Equipment
 } from '../lib/dataLayer';
 import { ArrowLeft, FileText, Paperclip, Package, History, Edit } from 'lucide-react';
 import DownloadWorkOrderPDF from '../components/downloadpdf';
@@ -19,6 +20,7 @@ export default function WorkOrderDetail() {
   const [order, setOrder] = useState<WorkOrder | null>(null);
   const [building, setBuilding] = useState<Building | null>(null);
   const [elevator, setElevator] = useState<Elevator | null>(null);
+  const [equipment, setEquipment] = useState<Equipment | null>(null);
   const [technician, setTechnician] = useState<Technician | null>(null);
   const [elevatorHistory, setElevatorHistory] = useState<ElevatorHistory[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'attachments' | 'parts' | 'history'>('overview');
@@ -47,15 +49,21 @@ export default function WorkOrderDetail() {
       }
       setOrder(foundOrder);
 
-      const [buildingData, elevatorData, historyData] = await Promise.all([
-        dataLayer.getBuilding(foundOrder.buildingId),
-        dataLayer.getElevator(foundOrder.elevatorId),
-        dataLayer.getElevatorHistory(foundOrder.elevatorId)
-      ]);
-
+      const buildingData = await dataLayer.getBuilding(foundOrder.buildingId);
       setBuilding(buildingData || null);
-      setElevator(elevatorData || null);
-      setElevatorHistory(historyData || []);
+
+      if (foundOrder.elevatorId) {
+        const [elevatorData, historyData] = await Promise.all([
+          dataLayer.getElevator(foundOrder.elevatorId),
+          dataLayer.getElevatorHistory(foundOrder.elevatorId)
+        ]);
+        setElevator(elevatorData || null);
+        setElevatorHistory(historyData || []);
+      } else if (foundOrder.equipmentId) {
+        const equipmentData = await dataLayer.getEquipment(foundOrder.equipmentId);
+        setEquipment(equipmentData || null);
+        // TODO: Decide if equipments have a history to be loaded
+      }
 
       if (foundOrder.technicianId) {
         const techData = await dataLayer.getTechnician(foundOrder.technicianId);
@@ -354,15 +362,26 @@ export default function WorkOrderDetail() {
                     </span>
                   </div>
                   <div>
-                    <span className="text-[#5e4c1e]">Ascensor:</span>{' '}
-                    <Link
-                      to={`/elevators/${elevator?.id}`}
-                      className="font-medium text-[#694e35] hover:text-[#fcca53] underline"
-                    >
-                      {elevator
-                        ? `${elevator.number} - ${elevator.locationDescription}`
-                        : 'Desconocido'}
-                    </Link>
+                    <span className="text-[#5e4c1e]">{equipment ? 'Equipo:' : 'Ascensor:'}</span>{' '}
+                    {elevator && (
+                      <Link
+                        to={`/elevators/${elevator.id}`}
+                        className="font-medium text-[#694e35] hover:text-[#fcca53] underline"
+                      >
+                        {`${elevator.number} - ${elevator.locationDescription}`}
+                      </Link>
+                    )}
+                    {equipment && (
+                      <Link
+                        to={`/equipment/${equipment.id}`}
+                        className="font-medium text-[#694e35] hover:text-[#fcca53] underline"
+                      >
+                        {`${equipment.name} - ${equipment.locationDescription}`}
+                      </Link>
+                    )}
+                    {!elevator && !equipment && (
+                      <span className="font-medium text-[#694e35]">Desconocido</span>
+                    )}
                   </div>
                 </div>
               </div>

@@ -1,6 +1,7 @@
 import { useState, FormEvent, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { dataLayer, Building, Elevator, Equipment, EquipmentType } from '../lib/dataLayer';
+import { dataLayer, Building, Elevator, Equipment, EquipmentType, currentCompanyId } from '../lib/dataLayer';
+import { supabaseDataLayer } from '../lib/supabaseDataLayer';
 import { ArrowLeft, Plus, Search } from 'lucide-react';
 
 // Normaliza: minúsculas y sin acentos (p.ej. "Córdoba" -> "cordoba")
@@ -19,6 +20,7 @@ export default function WorkOrderForm() {
   const [correctiveType, setCorrectiveType] = useState<'Minor Repair' | 'Refurbishment' | 'Installation'>('Minor Repair');
   const [buildingId, setBuildingId] = useState<string>('');
   const [elevatorId, setElevatorId] = useState<string>('');
+  const [equipmentId, setEquipmentId] = useState<string>('');
   const [technicianId, setTechnicianId] = useState<string>('');
   const [dateTime, setDateTime] = useState<string>('');
   const [description, setDescription] = useState<string>('');
@@ -117,7 +119,8 @@ export default function WorkOrderForm() {
           setClaimType(order.claimType);
           if (order.correctiveType) setCorrectiveType(order.correctiveType);
           setBuildingId(order.buildingId);
-          setElevatorId(order.elevatorId);
+          setElevatorId(order.elevatorId || '');
+          setEquipmentId(order.equipmentId || '');
           setTechnicianId(order.technicianId || '');
           // ✅ Prellenar input con hora BA a partir del ISO UTC guardado
           setDateTime(order.dateTime ? isoUtcToBaInput(order.dateTime) : '');
@@ -224,6 +227,7 @@ export default function WorkOrderForm() {
       });
       if (newEquipment) {
         setEquipments([...equipments, newEquipment]);
+        setEquipmentId(newEquipment.id); // <-- BUGFIX: auto-seleccionar el equipo nuevo
         alert('Equipo creado exitosamente');
       }
       setShowNewElevatorForm(false);
@@ -254,46 +258,41 @@ export default function WorkOrderForm() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
-    if (!buildingId || !elevatorId || !description) {
-      alert('Por favor complete todos los campos requeridos');
+    // Validation
+    if (!buildingId) {
+      alert('Por favor, seleccione un edificio.');
+      return;
+    }
+    if (!elevatorId && !equipmentId) {
+      alert('Por favor, seleccione un ascensor o equipo.');
+      return;
+    }
+    if (!description) {
+      alert('Por favor, ingrese una descripción.');
       return;
     }
 
-    const selectedEquipment = equipments.find(eq => eq.id === elevatorId);
-    const isEquipmentType = !!selectedEquipment;
-
-    const selectedElevatorId = toOpt(isEquipmentType ? undefined : elevatorId);
-    const selectedEquipmentId = toOpt(isEquipmentType ? elevatorId : undefined);
+    const workOrderData = {
+      claimType,
+      correctiveType: claimType === 'Corrective' ? correctiveType : undefined,
+      buildingId,
+      elevatorId: toOpt(elevatorId),
+      equipmentId: toOpt(equipmentId),
+      technicianId: toOpt(technicianId),
+      dateTime: dateTime ? baLocalToUtcIso(dateTime) : undefined,
+      description,
+      priority,
+      status: 'Pending' as const,
+      contactName: '',
+      contactPhone: '',
+    };
 
     try {
       if (isEditMode && id) {
-        await dataLayer.updateWorkOrder(id, {
-          claimType,
-          correctiveType: claimType === 'Corrective' ? correctiveType : undefined,
-          buildingId,
-          elevatorId: selectedElevatorId,
-          equipmentId: selectedEquipmentId,
-          technicianId: toOpt(technicianId),
-          dateTime: dateTime ? baLocalToUtcIso(dateTime) : undefined,
-          description,
-          priority,
-        });
+        await dataLayer.updateWorkOrder(id, workOrderData);
         navigate(`/orders/${id}`);
       } else {
-        const newOrder = await dataLayer.createWorkOrder({
-          claimType,
-          correctiveType: claimType === 'Corrective' ? correctiveType : undefined,
-          buildingId,
-          elevatorId: selectedElevatorId,
-          equipmentId: selectedEquipmentId,
-          technicianId: toOpt(technicianId),
-          contactName: '',
-          contactPhone: '',
-          dateTime: dateTime ? baLocalToUtcIso(dateTime) : undefined,
-          description,
-          status: 'Pending',
-          priority,
-        });
+        const newOrder = await supabaseDataLayer.createWorkOrder(workOrderData, currentCompanyId);
         if (newOrder) {
           navigate(`/orders/${newOrder.id}`);
         } else {
@@ -514,8 +513,18 @@ export default function WorkOrderForm() {
                   </label>
                   <div className="flex gap-2">
                     <select
-                      value={elevatorId}
-                      onChange={(e) => setElevatorId(e.target.value)}
+                      value={elevatorId || equipmentId}
+                      onChange={(e) => {
+                        const selectedId = e.target.value;
+                        const isElevator = elevators.some(el => el.id === selectedId);
+                        if (isElevator) {
+                          setElevatorId(selectedId);
+                          setEquipmentId('');
+                        } else {
+                          setEquipmentId(selectedId);
+                          setElevatorId('');
+                        }
+                      }}
                       className="flex-1 px-4 py-3 bg-white border-2 border-[#d4caaf] rounded-lg text-[#694e35] focus:outline-none focus:ring-2 focus:ring-[#fcca53] focus:border-transparent"
                     >
                       <option value="">Seleccione un equipo</option>

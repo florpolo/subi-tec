@@ -340,30 +340,29 @@ export function createDataLayer(companyId: string) {
     },
 
     createWorkOrder: async (order: Omit<WorkOrder, 'id' | 'createdAt'>): Promise<WorkOrder | null> => {
-      const result = await supabaseDataLayer.createWorkOrder(
-        {
-          company_id: companyId,
-          claim_type: order.claimType,
-          corrective_type: order.correctiveType,
-          building_id: order.buildingId,
-          elevator_id: order.elevatorId ?? null,
-          equipment_id: order.equipmentId ?? null,
-          technician_id: order.technicianId,
-          contact_name: order.contactName,
-          contact_phone: order.contactPhone,
-          date_time: order.dateTime,
-          description: order.description,
-          status: order.status,
-          priority: order.priority,
-          start_time: order.startTime,
-          finish_time: order.finishTime,
-          comments: order.comments,
-          parts_used: order.partsUsed,
-          photo_urls: order.photoUrls,
-          signature_data_url: order.signatureDataUrl,
-        } as any,
-        companyId
-      );
+      const mappedOrder = {
+        company_id: companyId,
+        claim_type: order.claimType,
+        corrective_type: order.correctiveType,
+        building_id: order.buildingId,
+        elevator_id: order.elevatorId,
+        equipment_id: order.equipmentId,
+        technician_id: order.technicianId,
+        contact_name: order.contactName,
+        contact_phone: order.contactPhone,
+        date_time: order.dateTime,
+        description: order.description,
+        status: order.status,
+        priority: order.priority,
+        start_time: order.startTime,
+        finish_time: order.finishTime,
+        comments: order.comments,
+        parts_used: order.partsUsed,
+        photo_urls: order.photoUrls,
+        signature_data_url: order.signatureDataUrl,
+      };
+
+      const result = await supabaseDataLayer.createWorkOrder(mappedOrder as any, companyId);
       return result ? mapWorkOrder(result) : null;
     },
 
@@ -476,7 +475,7 @@ getNextRemitoNo: () => supabaseDataLayer.getNextRemitoNo(companyId),
 }
 
 // Export a synchronous wrapper that throws if no company is selected
-let currentCompanyId: string | null = null;
+export let currentCompanyId: string | null = null;
 
 export function setCurrentCompanyId(companyId: string | null) {
   currentCompanyId = companyId;
