@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { dataLayer, Building, Elevator, Equipment, EquipmentType } from '../lib/dataLayer';
 import { Building2, Plus, Edit } from 'lucide-react';
 
 export default function Buildings() {
+  const [searchQuery, setSearchQuery] = useState('');
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [elevators, setElevators] = useState<Elevator[]>([]);
   const [equipments, setEquipments] = useState<Equipment[]>([]);
@@ -17,14 +18,14 @@ export default function Buildings() {
   const [editEntryHours, setEditEntryHours] = useState('');
   const [editClientName, setEditClientName] = useState('');
 
-  const [equipmentType, setEquipmentType] = useState<EquipmentType>('elevator');
-
-  const [newEquipmentName, setNewEquipmentName] = useState('');
-  const [newEquipmentLocation, setNewEquipmentLocation] = useState('');
-  const [newEquipmentBrand, setNewEquipmentBrand] = useState('');
-  const [newEquipmentModel, setNewEquipmentModel] = useState('');
-  const [newEquipmentSerial, setNewEquipmentSerial] = useState('');
-  const [newEquipmentCapacity, setNewEquipmentCapacity] = useState('');
+  const filteredAndSortedBuildings = useMemo(() => {
+    return buildings
+      .filter(b =>
+        b.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        b.neighborhood.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+      .sort((a, b) => a.address.localeCompare(b.address));
+  }, [buildings, searchQuery]);
 
   const loadData = async () => {
     const [buildingsList, elevatorsList, equipmentsList] = await Promise.all([
@@ -119,19 +120,33 @@ export default function Buildings() {
         </Link>
       </div>
 
-      {buildings.length === 0 ? (
+      <div className="mb-4">
+        <input
+          type="text"
+          placeholder="Buscar por dirección o barrio..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="w-full px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+        />
+      </div>
+
+      {filteredAndSortedBuildings.length === 0 ? (
         <div className="bg-white rounded-xl shadow-lg border-2 border-gray-300 p-8 text-center">
-          <p className="text-[#5e4c1e] text-lg mb-4">No hay edificios todavía</p>
-          <Link
-            to="/buildings/new"
-            className="inline-block px-6 py-3 bg-yellow-500 text-[#520f0f] rounded-lg font-bold hover:bg-yellow-400 transition-colors"
-          >
-            Crear tu primer edificio
-          </Link>
+          <p className="text-[#5e4c1e] text-lg mb-4">
+            {searchQuery ? 'No se encontraron edificios.' : 'No hay edificios todavía'}
+          </p>
+          {!searchQuery && (
+            <Link
+              to="/buildings/new"
+              className="inline-block px-6 py-3 bg-yellow-500 text-[#520f0f] rounded-lg font-bold hover:bg-yellow-400 transition-colors"
+            >
+              Crear tu primer edificio
+            </Link>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-6">
-          {buildings.map((building) => {
+          {filteredAndSortedBuildings.map((building) => {
             const buildingElevators = getBuildingElevators(building.id);
 
             return (
