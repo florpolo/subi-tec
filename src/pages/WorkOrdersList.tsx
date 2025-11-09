@@ -304,7 +304,7 @@ export default function WorkOrdersList() {
           {visible.map((order) => (
             <div key={order.id} className="bg-white rounded-xl shadow border-2 border-gray-300 p-6 hover:shadow-md transition-shadow">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex-1 space-y-3">
+                <div className="flex-1 space-y-2">
                   <div className="flex flex-wrap items-center gap-3">
                     <span className={`px-3 py-1 text-sm font-bold border-2 ${getPriorityColor(order.priority)} rounded`}>
                       {getPriorityLabel(order.priority)}
@@ -313,23 +313,9 @@ export default function WorkOrdersList() {
                       Estado: {getStatusLabel(order.status)}
                     </span>
                   </div>
-                  <p className="text-[#694e35] font-bold text-lg">{getClaimTypeLabel(order.claimType)}</p>
-                  <p className="text-[#5e4c1e]">{order.description}</p>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-[#520f0f]">
-                    <span>Edificio: {getBuildingName(order.buildingId)}</span>
-                    <span>Ascensor: {getElevatorInfo(order.elevatorId)}</span>
-                    <span>Técnico: {getTechnicianName(order.technicianId)}</span>
-                    {(order as any).dateTime || (order as any).date_time ? (
-                      <span className="font-medium">
-                        Programada: {formatBA(((order as any).dateTime ?? (order as any).date_time) as string)}
-                      </span>
-                    ) : null}
-                    {(order as any).finishTime || (order as any).finish_time ? (
-                      <span className="font-medium">
-                        · Finalizada: {formatBA(((order as any).finishTime ?? (order as any).finish_time) as string)}
-                      </span>
-                    ) : null}
-                  </div>
+                  <h3 className="text-[#694e35] font-bold text-xl">{getBuildingName(order.buildingId)}</h3>
+                  <p className="text-[#5e4c1e] text-sm">{order.description}</p>
+                  <p className="text-[#5e4c1e] text-sm">Técnico: {getTechnicianName(order.technicianId)}</p>
                 </div>
                 <div className="flex gap-2">
                   <Link
