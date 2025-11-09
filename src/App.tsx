@@ -59,6 +59,7 @@ function AppRoutes() {
       <Route path="/orders/:id/edit" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><WorkOrderForm /></Layout></ProtectedRoute>} />
       <Route path="/buildings" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><Buildings /></Layout></ProtectedRoute>} />
       <Route path="/buildings/new" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><BuildingForm /></Layout></ProtectedRoute>} />
+      <Route path="/buildings/:id/edit" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><BuildingForm /></Layout></ProtectedRoute>} />
       <Route path="/elevators/:id" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><ElevatorDetail /></Layout></ProtectedRoute>} />
       <Route path="/equipment/:id" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><EquipmentDetail /></Layout></ProtectedRoute>} />
       <Route path="/technicians" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><Technicians /></Layout></ProtectedRoute>} />
