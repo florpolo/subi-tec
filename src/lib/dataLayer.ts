@@ -43,7 +43,7 @@ export interface Technician {
 
 export interface WorkOrder {
   id: string;
-  claimType: 'Semiannual Tests' | 'Monthly Maintenance' | 'Corrective';
+  claimType: 'Reclamo' | 'Inspección' | 'Reparación presupuestada' | 'Reparación correctiva';
   correctiveType?: 'Minor Repair' | 'Refurbishment' | 'Installation';
   buildingId: string;
   elevatorId?: string;
@@ -138,7 +138,7 @@ function mapTechnician(t: SupabaseTechnician): Technician {
 function mapWorkOrder(w: SupabaseWorkOrder): WorkOrder {
   return {
     id: w.id,
-    claimType: w.claim_type as 'Semiannual Tests' | 'Monthly Maintenance' | 'Corrective',
+    claimType: w.claim_type as 'Reclamo' | 'Inspección' | 'Reparación presupuestada' | 'Reparación correctiva',
     correctiveType: w.corrective_type as 'Minor Repair' | 'Refurbishment' | 'Installation' | undefined,
     buildingId: w.building_id,
     elevatorId: w.elevator_id ?? undefined,
@@ -342,7 +342,15 @@ export function createDataLayer(companyId: string) {
     createWorkOrder: async (order: Omit<WorkOrder, 'id' | 'createdAt'>): Promise<WorkOrder | null> => {
       const mappedOrder = {
         company_id: companyId,
-        claim_type: order.claimType,
+        claim_type: (() => {
+          switch (order.claimType) {
+            case 'Reclamo': return 'Corrective';
+            case 'Inspección': return 'Semiannual Tests';
+            case 'Reparación presupuestada': return 'Corrective';
+            case 'Reparación correctiva': return 'Corrective';
+            default: return 'Corrective';
+          }
+        })(),
         corrective_type: order.correctiveType,
         building_id: order.buildingId,
         elevator_id: order.elevatorId,
@@ -368,7 +376,15 @@ export function createDataLayer(companyId: string) {
 
     updateWorkOrder: async (id: string, updates: Partial<WorkOrder>): Promise<WorkOrder | null> => {
       const mappedUpdates: any = {};
-      if (updates.claimType !== undefined) mappedUpdates.claim_type = updates.claimType;
+      if (updates.claimType !== undefined) {
+        switch (updates.claimType) {
+          case 'Reclamo': mappedUpdates.claim_type = 'Corrective'; break;
+          case 'Inspección': mappedUpdates.claim_type = 'Semiannual Tests'; break;
+          case 'Reparación presupuestada': mappedUpdates.claim_type = 'Corrective'; break;
+          case 'Reparación correctiva': mappedUpdates.claim_type = 'Corrective'; break;
+          default: mappedUpdates.claim_type = 'Corrective'; break;
+        }
+      }
       if (updates.correctiveType !== undefined) mappedUpdates.corrective_type = updates.correctiveType;
       if (updates.buildingId !== undefined) mappedUpdates.building_id = updates.buildingId;
       if (updates.elevatorId !== undefined) mappedUpdates.elevator_id = updates.elevatorId ?? null;

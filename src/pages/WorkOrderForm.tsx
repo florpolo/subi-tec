@@ -16,7 +16,7 @@ export default function WorkOrderForm() {
   const { id } = useParams<{ id: string }>();
   const isEditMode = !!id;
 
-  const [claimType, setClaimType] = useState<'Semiannual Tests' | 'Monthly Maintenance' | 'Corrective'>('Monthly Maintenance');
+  const [claimType, setClaimType] = useState<'Reclamo' | 'Inspección' | 'Reparación presupuestada' | 'Reparación correctiva'>('Reclamo');
   const [correctiveType, setCorrectiveType] = useState<'Minor Repair' | 'Refurbishment' | 'Installation'>('Minor Repair');
   const [buildingId, setBuildingId] = useState<string>('');
   const [elevatorId, setElevatorId] = useState<string>('');
@@ -337,16 +337,17 @@ export default function WorkOrderForm() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-[#694e35] font-bold mb-2">
-                Tipo de Reclamo <span className="text-red-600">*</span>
+                Tipo de trabajo <span className="text-red-600">*</span>
               </label>
               <select
                 value={claimType}
                 onChange={(e) => setClaimType(e.target.value as any)}
                 className="w-full px-4 py-3 bg-white border-2 border-[#d4caaf] rounded-lg text-[#694e35] focus:outline-none focus:ring-2 focus:ring-[#fcca53] focus:border-transparent"
               >
-                <option value="Semiannual Tests">Pruebas semestrales</option>
-                <option value="Monthly Maintenance">Mantenimiento mensual</option>
-                <option value="Corrective">Correctivo</option>
+                <option value="Reclamo">Reclamo</option>
+                <option value="Inspección">Inspección</option>
+                <option value="Reparación presupuestada">Reparación presupuestada</option>
+                <option value="Reparación correctiva">Reparación correctiva</option>
               </select>
             </div>
 
