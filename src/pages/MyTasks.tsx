@@ -98,6 +98,7 @@ export default function MyTasks() {
   const [orders, setOrders] = useState<WorkOrder[]>([]);
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [elevators, setElevators] = useState<Elevator[]>([]);
+  const [equipments, setEquipments] = useState<Equipment[]>([]);
 
   // estados por OT
   const [formStates, setFormStates] = useState<Record<string, FormState>>({});
@@ -121,6 +122,19 @@ export default function MyTasks() {
   const getElevatorInfo = (elevatorId: string) => {
     const elevator = elevators.find(e => e.id === elevatorId);
     return elevator ? `${elevator.number} - ${elevator.location_description}` : 'Desconocido';
+  };
+
+  const getEquipmentTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      elevator: 'Ascensor',
+      water_pump: 'Bomba de agua',
+      freight_elevator: 'Montacarga',
+      car_lift: 'Montacoche',
+      dumbwaiter: 'Montaplatos',
+      camillero: 'Camillero',
+      other: 'Otro',
+    };
+    return labels[type] || type;
   };
 
   // ======== Reglas de filtrado ========
@@ -205,12 +219,14 @@ export default function MyTasks() {
     fetchedOrders.forEach(ensureFormState);
 
     // Catálogos
-    const [allBuildings, allElevators] = await Promise.all([
+    const [allBuildings, allElevators, allEquipments] = await Promise.all([
       supabaseDataLayer.listBuildings(activeCompanyId),
       supabaseDataLayer.listElevators(activeCompanyId),
+      supabaseDataLayer.listEquipments(activeCompanyId),
     ]);
     setBuildings(allBuildings);
     setElevators(allElevators);
+    setEquipments(allEquipments);
 
     // Historial por ascensor
     const histories: Record<string, ElevatorHistory[]> = {};
@@ -244,6 +260,7 @@ export default function MyTasks() {
     const order = allOrders.find(o => o.id === orderId);
     if (order) ensureFormState(order);
     await loadData();
+    setActiveFilter('inProgress');
   };
 
   const handleSaveChanges = async (orderId: string) => {
@@ -484,38 +501,60 @@ export default function MyTasks() {
                   </div>
                 </div>
 
-                {/* Historial (toggle por botón) */}
+                {/* Historial y Detalles del Equipo (toggle por botón) */}
                 {historyOpen[order.id] && (
                   <div className="border-t-2 border-[#d4caaf] p-6 bg-white">
                     <div className="bg-[#f4ead0] p-4 rounded-lg border-2 border-[#d4caaf]">
                       <h4 className="font-bold text-[#694e35] mb-3 flex items-center gap-2">
                         <HistoryIcon size={18} />
-                        Historial del Ascensor {getElevatorInfo(order.elevator_id)}
+                        {order.elevator_id ? `Historial del Ascensor ${getElevatorInfo(order.elevator_id)}` : `Detalles del Equipo`}
                       </h4>
-                      {elevatorHistories[order.elevator_id]?.length === 0 ? (
-                        <p className="text-sm text-[#5e4c1e]">No hay historial registrado para este ascensor</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {elevatorHistories[order.elevator_id]?.map((entry) => (
-                            <div key={entry.id} className="bg-white p-3 rounded-lg border border-[#d4caaf]">
-                              <div className="flex justify-between items-start mb-1">
-                                <span className="font-medium text-[#694e35] text-sm">{(entry as any).technician_name}</span>
-                                <span className="text-xs text-[#5e4c1e]">
-                                  {new Date(entry.date).toLocaleDateString('es-AR')}
-                                </span>
-                              </div>
-                              <p className="text-sm text-[#5e4c1e]">{entry.description}</p>
-                              {entry.work_order_id && (
-                                <button
-                                  type="button"
-                                  onClick={() => navigate(`/task/${entry.work_order_id}`)}
-                                  className="mt-2 text-sm text-[#694e35] underline hover:text-[#fcca53]"
-                                >
-                                  Ver Orden de Trabajo →
-                                </button>
-                              )}
+
+                      {order.equipment_id && (
+                        <div className="mb-4">
+                          <p className="text-sm text-[#5e4c1e]"><span className="font-bold">Tipo:</span> {getEquipmentTypeLabel(equipments.find(e => e.id === order.equipment_id)?.type)}</p>
+                          <p className="text-sm text-[#5e4c1e]"><span className="font-bold">Nombre:</span> {equipments.find(e => e.id === order.equipment_id)?.name}</p>
+                          <p className="text-sm text-[#5e4c1e]"><span className="font-bold">Ubicación:</span> {equipments.find(e => e.id === order.equipment_id)?.location_description}</p>
+                          <p className="text-sm text-[#5e4c1e]"><span className="font-bold">Marca:</span> {equipments.find(e => e.id === order.equipment_id)?.brand || 'N/A'}</p>
+                          <p className="text-sm text-[#5e4c1e]"><span className="font-bold">Modelo:</span> {equipments.find(e => e.id === order.equipment_id)?.model || 'N/A'}</p>
+                        </div>
+                      )}
+
+                      {order.elevator_id && (
+                        <div>
+                          <div className="mb-4">
+                            <p className="text-sm text-[#5e4c1e]"><span className="font-bold">Número:</span> {elevators.find(e => e.id === order.elevator_id)?.number}</p>
+                            <p className="text-sm text-[#5e4c1e]"><span className="font-bold">Ubicación:</span> {elevators.find(e => e.id === order.elevator_id)?.location_description}</p>
+                            <p className="text-sm text-[#5e4c1e]"><span className="font-bold">Paradas:</span> {elevators.find(e => e.id === order.elevator_id)?.stops}</p>
+                            <p className="text-sm text-[#5e4c1e]"><span className="font-bold">Capacidad:</span> {elevators.find(e => e.id === order.elevator_id)?.capacity} kg</p>
+                            <p className="text-sm text-[#5e4c1e]"><span className="font-bold">Tipo de control:</span> {elevators.find(e => e.id === order.elevator_id)?.control_type}</p>
+                          </div>
+                          {elevatorHistories[order.elevator_id]?.length === 0 ? (
+                            <p className="text-sm text-[#5e4c1e]">No hay historial registrado para este ascensor</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {elevatorHistories[order.elevator_id]?.map((entry) => (
+                                <div key={entry.id} className="bg-white p-3 rounded-lg border border-[#d4caaf]">
+                                  <div className="flex justify-between items-start mb-1">
+                                    <span className="font-medium text-[#694e35] text-sm">{(entry as any).technician_name}</span>
+                                    <span className="text-xs text-[#5e4c1e]">
+                                      {new Date(entry.date).toLocaleDateString('es-AR')}
+                                    </span>
+                                  </div>
+                                  <p className="text-sm text-[#5e4c1e]">{entry.description}</p>
+                                  {entry.work_order_id && (
+                                    <button
+                                      type="button"
+                                      onClick={() => navigate(`/task/${entry.work_order_id}`)}
+                                      className="mt-2 text-sm text-[#694e35] underline hover:text-[#fcca53]"
+                                    >
+                                      Ver Orden de Trabajo →
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          )}
                         </div>
                       )}
                     </div>
