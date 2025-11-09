@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { dataLayer, Technician, WorkOrder } from '../lib/dataLayer';
 import { Users, Circle, Plus, Edit } from 'lucide-react';
+import usePreserveScroll from '../hooks/usePreserveScroll';
 
 interface DailyCounters {
   total: number;
@@ -15,6 +16,8 @@ export default function Technicians() {
   // ⬇️ Binario: solo 'free' | 'busy'
   const [technicianStatuses, setTechnicianStatuses] = useState<Record<string, 'free' | 'busy'>>({});
   const [dailyCounters, setDailyCounters] = useState<Record<string, DailyCounters>>({});
+
+  usePreserveScroll('techniciansListScroll', [technicians]);
 
   // Edit mode state
   const [editingTechnicianId, setEditingTechnicianId] = useState<string | null>(null);

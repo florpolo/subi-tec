@@ -2,14 +2,13 @@ import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { dataLayer, Building, Elevator, Equipment, EquipmentType } from '../lib/dataLayer';
 import { Building2, Plus, Edit } from 'lucide-react';
+import usePreserveScroll from '../hooks/usePreserveScroll';
 
 export default function Buildings() {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState<string>(() => sessionStorage.getItem('buildings_searchQuery') || '');
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [elevators, setElevators] = useState<Elevator[]>([]);
   const [equipments, setEquipments] = useState<Equipment[]>([]);
-
-
 
   const [editingBuildingId, setEditingBuildingId] = useState<string | null>(null);
   const [editAddress, setEditAddress] = useState('');
@@ -26,6 +25,12 @@ export default function Buildings() {
       )
       .sort((a, b) => a.address.localeCompare(b.address));
   }, [buildings, searchQuery]);
+
+  usePreserveScroll('buildingsListScroll', [filteredAndSortedBuildings]);
+
+  useEffect(() => {
+    sessionStorage.setItem('buildings_searchQuery', searchQuery);
+  }, [searchQuery]);
 
   const loadData = async () => {
     const [buildingsList, elevatorsList, equipmentsList] = await Promise.all([

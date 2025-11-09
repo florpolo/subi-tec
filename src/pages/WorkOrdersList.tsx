@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { dataLayer, WorkOrder, Building, Elevator, Technician } from '../lib/dataLayer';
 import { Search, Filter, FileText, Clock, AlertCircle, PlayCircle, CheckCircle } from 'lucide-react';
+import usePreserveScroll from '../hooks/usePreserveScroll';
 
 // --- Zona horaria Buenos Aires ---
 const TZ_BA = 'America/Argentina/Buenos_Aires';
@@ -79,15 +80,22 @@ export default function WorkOrdersList() {
   const [technicians, setTechnicians] = useState<Technician[]>([]);
 
   // Filtros UI
-  // 'today' = "Total" (muestra visibilidad base sin filtro de estado)
-  const [activeKpiFilter, setActiveKpiFilter] = useState<string>('today');
-  const [priorityFilter, setPriorityFilter] = useState<string>('');
-  const [technicianFilter, setTechnicianFilter] = useState<string>('');
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  const [dateFilter, setDateFilter] = useState<string>(''); // 'YYYY-MM-DD'
+  const [activeKpiFilter, setActiveKpiFilter] = useState<string>(() => sessionStorage.getItem('workOrders_activeKpiFilter') || 'today');
+  const [priorityFilter, setPriorityFilter] = useState<string>(() => sessionStorage.getItem('workOrders_priorityFilter') || '');
+  const [technicianFilter, setTechnicianFilter] = useState<string>(() => sessionStorage.getItem('workOrders_technicianFilter') || '');
+  const [searchTerm, setSearchTerm] = useState<string>(() => sessionStorage.getItem('workOrders_searchTerm') || '');
+  const [dateFilter, setDateFilter] = useState<string>(() => sessionStorage.getItem('workOrders_dateFilter') || '');
 
   // KPIs (siempre sobre visibilidad base = todas las órdenes)
   const [kpis, setKpis] = useState({ total: 0, pending: 0, unassigned: 0, inProgress: 0, completed: 0 });
+
+  useEffect(() => {
+    sessionStorage.setItem('workOrders_activeKpiFilter', activeKpiFilter);
+    sessionStorage.setItem('workOrders_priorityFilter', priorityFilter);
+    sessionStorage.setItem('workOrders_technicianFilter', technicianFilter);
+    sessionStorage.setItem('workOrders_searchTerm', searchTerm);
+    sessionStorage.setItem('workOrders_dateFilter', dateFilter);
+  }, [activeKpiFilter, priorityFilter, technicianFilter, searchTerm, dateFilter]);
 
   const loadData = async () => {
     const allOrders = await dataLayer.listWorkOrders();
@@ -120,61 +128,64 @@ export default function WorkOrdersList() {
   }, []);
 
   // --------- PIPELINE DE VISUALIZACIÓN ---------
-  // Ahora la base es SIEMPRE todas las órdenes.
-  let visible: WorkOrder[] = baseVisibility(ordersRaw);
+  const visible = useMemo(() => {
+    let filtered: WorkOrder[] = baseVisibility(ordersRaw);
 
-  // KPI (estado) como filtro de la lista
-  if (activeKpiFilter === 'Pending') {
-    visible = visible.filter(o => o.status === 'Pending');
-  } else if (activeKpiFilter === 'In Progress') {
-    visible = visible.filter(o => o.status === 'In Progress');
-  } else if (activeKpiFilter === 'Completed') {
-    visible = visible.filter(o => o.status === 'Completed');
-  } else if (activeKpiFilter === 'unassigned') {
-    visible = visible.filter(o => o.status === 'Pending' && !o.technicianId);
-  } // 'today' => sin filtro extra
+    // KPI (estado) como filtro de la lista
+    if (activeKpiFilter === 'Pending') {
+      filtered = filtered.filter(o => o.status === 'Pending');
+    } else if (activeKpiFilter === 'In Progress') {
+      filtered = filtered.filter(o => o.status === 'In Progress');
+    } else if (activeKpiFilter === 'Completed') {
+      filtered = filtered.filter(o => o.status === 'Completed');
+    } else if (activeKpiFilter === 'unassigned') {
+      filtered = filtered.filter(o => o.status === 'Pending' && !o.technicianId);
+    } // 'today' => sin filtro extra
 
-  // Prioridad / Técnico
-  if (priorityFilter) {
-    visible = visible.filter(o => o.priority === priorityFilter);
-  }
-  if (technicianFilter) {
-    visible = visible.filter(o => o.technicianId === technicianFilter);
-  }
+    // Prioridad / Técnico
+    if (priorityFilter) {
+      filtered = filtered.filter(o => o.priority === priorityFilter);
+    }
+    if (technicianFilter) {
+      filtered = filtered.filter(o => o.technicianId === technicianFilter);
+    }
 
-  // Filtro por FECHA (día BA, programada vs finalizada)
-  if (dateFilter) {
-    visible = visible.filter((o: any) => {
-      const when = getRelevantInstant(o);
-      if (!when) return false; // sin fecha relevante no entra al día filtrado
-      return baDayKey(when) === dateFilter;
+    // Filtro por FECHA (día BA, programada vs finalizada)
+    if (dateFilter) {
+      filtered = filtered.filter((o: any) => {
+        const when = getRelevantInstant(o);
+        if (!when) return false; // sin fecha relevante no entra al día filtrado
+        return baDayKey(when) === dateFilter;
+      });
+    }
+
+    // Búsqueda (solo dirección y barrio del edificio; insensible a acentos)
+    if (searchTerm) {
+      const q = normalize(searchTerm);
+
+      // mapa para acceso rápido al edificio por id
+      const bById = new Map(buildings.map(b => [b.id, b]));
+
+      filtered = filtered.filter((o) => {
+        const b = bById.get(o.buildingId);
+        return (
+          normalize(b?.address).includes(q) ||       // dirección (calle)
+          normalize(b?.neighborhood).includes(q)     // barrio
+        );
+      });
+    }
+
+    // Ordenar (prioridad > creación)
+    return filtered.sort((a, b) => {
+      const weights: Record<string, number> = { High: 3, Medium: 2, Low: 1 };
+      const aw = weights[a.priority] ?? 0;
+      const bw = weights[b.priority] ?? 0;
+      if (aw !== bw) return bw - aw;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
-  }
-
-  // Búsqueda (solo dirección y barrio del edificio; insensible a acentos)
-  if (searchTerm) {
-    const q = normalize(searchTerm);
-
-    // mapa para acceso rápido al edificio por id
-    const bById = new Map(buildings.map(b => [b.id, b]));
-
-    visible = visible.filter((o) => {
-      const b = bById.get(o.buildingId);
-      return (
-        normalize(b?.address).includes(q) ||       // dirección (calle)
-        normalize(b?.neighborhood).includes(q)     // barrio
-      );
-    });
-  }
-
-  // Ordenar (prioridad > creación)
-  visible = visible.sort((a, b) => {
-    const weights: Record<string, number> = { High: 3, Medium: 2, Low: 1 };
-    const aw = weights[a.priority] ?? 0;
-    const bw = weights[b.priority] ?? 0;
-    if (aw !== bw) return bw - aw;
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-  });
+  }, [ordersRaw, activeKpiFilter, priorityFilter, technicianFilter, dateFilter, searchTerm, buildings]);
+  
+  usePreserveScroll('workOrdersListScroll', [visible]);
 
   const getBuildingName = (buildingId: string) => {
     const building = buildings.find(b => b.id === buildingId);

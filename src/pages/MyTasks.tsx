@@ -1,10 +1,11 @@
 // src/pages/MyTasks.tsx
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { supabaseDataLayer, WorkOrder, Building, Elevator, ElevatorHistory, Technician } from '../lib/supabaseDataLayer';
+import { supabaseDataLayer, WorkOrder, Building, Elevator, ElevatorHistory, Technician, Equipment } from '../lib/supabaseDataLayer';
 import { useAuth } from '../contexts/AuthContext';
 import { Clock, Play, Save, CheckCircle, RotateCcw, Camera, Plus, X, History as HistoryIcon } from 'lucide-react';
 import SignaturePad from '../components/SignaturePad';
+import usePreserveScroll from '../hooks/usePreserveScroll';
 
 // ======== Timezone helpers (Buenos Aires) ========
 const TZ_BA = 'America/Argentina/Buenos_Aires';
@@ -114,7 +115,13 @@ export default function MyTasks() {
     unassigned: 0
   });
 
-  const [activeFilter, setActiveFilter] = useState<'today' | 'pending' | 'inProgress' | 'completed'>('today');
+  const [activeFilter, setActiveFilter] = useState<'today' | 'pending' | 'inProgress' | 'completed'>(() => (sessionStorage.getItem('myTasks_activeFilter') as any) || 'today');
+
+  useEffect(() => {
+    sessionStorage.setItem('myTasks_activeFilter', activeFilter);
+  }, [activeFilter]);
+
+  usePreserveScroll('myTasksListScroll', [orders]);
 
   // ======== Catálogos ========
   const getBuilding = (buildingId: string) => buildings.find(b => b.id === buildingId);
@@ -153,6 +160,14 @@ export default function MyTasks() {
       filtered = ordersList.filter((o) => o.status === 'In Progress');
     } else if (filter === 'completed') {
       filtered = ordersList.filter((o: any) => o.status === 'Completed' && isTodayBA(o.finish_time || o.finishTime));
+    }
+
+    if (filter === 'inProgress') {
+      return filtered.sort((a: any, b: any) => {
+        const aTime = a.start_time ? new Date(a.start_time).getTime() : 0;
+        const bTime = b.start_time ? new Date(b.start_time).getTime() : 0;
+        return bTime - aTime;
+      });
     }
 
     return filtered.sort((a: any, b: any) => {
@@ -213,7 +228,6 @@ export default function MyTasks() {
 
     setAllOrders(fetchedOrders);
     recomputeCounters(fetchedOrders);
-    setOrders(applyFilter(fetchedOrders, activeFilter));
 
     // Inicializamos form states para las que correspondan
     fetchedOrders.forEach(ensureFormState);
@@ -252,15 +266,20 @@ export default function MyTasks() {
   // ======== Acciones ========
   const handleStart = async (orderId: string) => {
     if (!activeCompanyId) return;
-    await supabaseDataLayer.updateWorkOrder(
+
+    const updatedOrder = await supabaseDataLayer.updateWorkOrder(
       orderId,
       { status: 'In Progress', start_time: new Date().toISOString() },
       activeCompanyId
     );
-    const order = allOrders.find(o => o.id === orderId);
-    if (order) ensureFormState(order);
-    await loadData();
-    setActiveFilter('inProgress');
+
+    if (updatedOrder) {
+      const updatedOrders = allOrders.map(o =>
+        o.id === orderId ? (updatedOrder as WorkOrder) : o
+      );
+      setAllOrders(updatedOrders);
+      setActiveFilter('inProgress');
+    }
   };
 
   const handleSaveChanges = async (orderId: string) => {

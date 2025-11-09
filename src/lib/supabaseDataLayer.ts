@@ -359,6 +359,18 @@ async createWorkOrder(
   return data || null;
 },
 
+async updateWorkOrder(id: string, updates: Partial<WorkOrder>, companyId: string): Promise<WorkOrder | null> {
+  const { data, error } = await supabase
+    .from<WorkOrder>('work_orders')
+    .update(updates)
+    .eq('company_id', companyId)
+    .eq('id', id)
+    .select()
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+},
+
 
   /* ========== Elevator History ========== */
   async addElevatorHistory(
