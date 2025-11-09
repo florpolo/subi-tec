@@ -17,14 +17,14 @@ export default function Technicians() {
   const [technicianStatuses, setTechnicianStatuses] = useState<Record<string, 'free' | 'busy'>>({});
   const [dailyCounters, setDailyCounters] = useState<Record<string, DailyCounters>>({});
 
-  usePreserveScroll('techniciansListScroll', [technicians]);
-
   // Edit mode state
   const [editingTechnicianId, setEditingTechnicianId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editRole, setEditRole] = useState<'Reclamista' | 'Engrasador'>('Reclamista');
   const [editSpecialty, setEditSpecialty] = useState('');
   const [editContact, setEditContact] = useState('');
+
+  usePreserveScroll('techniciansListScroll', [technicians]);
 
   const getTodayCounters = async (technicianId: string): Promise<DailyCounters> => {
     const allOrders = await dataLayer.listWorkOrders();

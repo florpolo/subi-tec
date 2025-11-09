@@ -74,6 +74,19 @@ const getClaimTypeLabel = (claimType: string) =>
 const baseVisibility = (list: WorkOrder[]) => list;
 
 export default function WorkOrdersList() {
+  usePreserveScroll('workOrdersListScroll');
+
+  useEffect(() => {
+    if ('scrollRestoration' in history) {
+      history.scrollRestoration = 'manual';
+    }
+    return () => {
+      if ('scrollRestoration' in history) {
+        history.scrollRestoration = 'auto';
+      }
+    };
+  }, []);
+
   const [ordersRaw, setOrdersRaw] = useState<WorkOrder[]>([]);
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [elevators, setElevators] = useState<Elevator[]>([]);

@@ -1,5 +1,5 @@
 // src/pages/MyTasks.tsx
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabaseDataLayer, WorkOrder, Building, Elevator, ElevatorHistory, Technician, Equipment } from '../lib/supabaseDataLayer';
 import { useAuth } from '../contexts/AuthContext';
@@ -91,6 +91,9 @@ type FormState = {
 };
 
 export default function MyTasks() {
+  const listRef = useRef<HTMLDivElement>(null);
+  usePreserveScroll('myTasksListScroll', listRef);
+
   const navigate = useNavigate();
   const { activeCompanyId, user } = useAuth();
 
@@ -120,8 +123,6 @@ export default function MyTasks() {
   useEffect(() => {
     sessionStorage.setItem('myTasks_activeFilter', activeFilter);
   }, [activeFilter]);
-
-  usePreserveScroll('myTasksListScroll', [orders]);
 
   // ======== Catálogos ========
   const getBuilding = (buildingId: string) => buildings.find(b => b.id === buildingId);
@@ -436,7 +437,7 @@ export default function MyTasks() {
           <p className="text-[#5e4c1e] text-lg">No hay tareas asignadas</p>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-4" ref={listRef}>
           {orders.map((order: any) => {
             const building = getBuilding(order.building_id);
             const fs = formStates[order.id] || { comments: '', parts: [], photos: [], signature: '', dni: '', aclaracion: '' };

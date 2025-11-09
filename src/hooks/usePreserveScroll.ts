@@ -1,36 +1,51 @@
-import { useEffect, useLayoutEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 
-const usePreserveScroll = (key: string, dependencies: any[]) => {
+const usePreserveScroll = (key: string) => { // No longer needs listRef directly
   const location = useLocation();
   const scrollPos = useRef(0);
-  const hasRestored = useRef(false);
+  const isRestoring = useRef(false); // Flag to prevent saving scroll during restoration
 
-  useLayoutEffect(() => {
-    if (hasRestored.current || dependencies.length === 0) return;
-    const savedScrollPos = sessionStorage.getItem(key);
-    if (savedScrollPos) {
-      window.scrollTo(0, parseInt(savedScrollPos, 10));
-      sessionStorage.removeItem(key);
-      hasRestored.current = true;
-    }
-  }, [key, location, dependencies]);
-
+  // Effect to save scroll position when leaving the page
   useEffect(() => {
     const handleScroll = () => {
-      scrollPos.current = window.scrollY;
+      if (!isRestoring.current) {
+        scrollPos.current = window.scrollY;
+      }
     };
+
+    const saveScroll = () => {
+      if (!isRestoring.current) {
+        sessionStorage.setItem(key, scrollPos.current.toString());
+      }
+    };
+
     window.addEventListener('scroll', handleScroll);
+    window.addEventListener('beforeunload', saveScroll); // Save before unload
+
     return () => {
       window.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('beforeunload', saveScroll);
+      // Also save on component unmount, in case beforeunload doesn't fire reliably
+      if (!isRestoring.current) {
+        sessionStorage.setItem(key, window.scrollY.toString());
+      }
     };
-  }, []);
+  }, [key]);
 
+  // Effect to restore scroll position when component mounts or location changes
   useEffect(() => {
-    return () => {
-      sessionStorage.setItem(key, scrollPos.current.toString());
-    };
-  }, [key, location]);
+    const savedScrollPos = sessionStorage.getItem(key);
+    if (savedScrollPos) {
+      isRestoring.current = true;
+      // Use requestAnimationFrame to ensure scroll happens after browser paint
+      requestAnimationFrame(() => {
+        window.scrollTo(0, parseInt(savedScrollPos, 10));
+        sessionStorage.removeItem(key); // Clear after restoration
+        isRestoring.current = false;
+      });
+    }
+  }, [key, location.key]); // Depend on location.key to trigger on navigation within same component
 };
 
 export default usePreserveScroll;
