@@ -9,15 +9,15 @@ import {
   ElevatorHistory,
   Equipment
 } from '../lib/dataLayer';
-import { ArrowLeft, FileText, Paperclip, Package, History, Edit, CheckCircle } from 'lucide-react'; // Added CheckCircle
-import { renderRemitoPdf } from '../components/RemitoRenderer';
+import { ArrowLeft, FileText, Paperclip, Package, History, Edit, CheckCircle } from 'lucide-react';
+import { generateRemitoPdf } from '../lib/RemitoGenerator';
 import { supabaseDataLayer } from '../lib/supabaseDataLayer';
-import { useAuth } from '../contexts/AuthContext'; // Assuming useAuth exists
+import { useAuth } from '../contexts/AuthContext';
 
 export default function WorkOrderDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user, companyId } = useAuth(); // Get user and companyId from AuthContext
+  const { user, companyId } = useAuth();
 
   const [order, setOrder] = useState<WorkOrder | null>(null);
   const [building, setBuilding] = useState<Building | null>(null);
@@ -28,7 +28,7 @@ export default function WorkOrderDetail() {
   const [activeTab, setActiveTab] = useState<'overview' | 'attachments' | 'parts' | 'history'>('overview');
   const [error, setError] = useState<string | null>(null);
   const [loadingRemito, setLoadingRemito] = useState(false);
-  const [completingTask, setCompletingTask] = useState(false); // New state for completing task
+  const [completingTask, setCompletingTask] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -55,7 +55,6 @@ export default function WorkOrderDetail() {
       } else if (foundOrder.equipmentId) {
         const equipmentData = await dataLayer.getEquipment(foundOrder.equipmentId);
         setEquipment(equipmentData || null);
-        // TODO: Decide if equipments have a history to be loaded
       }
 
       if (foundOrder.technicianId) {
@@ -72,19 +71,23 @@ export default function WorkOrderDetail() {
     if (!order || !companyId) return;
     setLoadingRemito(true);
     try {
-      // 1) Guard clauses
-      if (order.status !== 'Completed') throw new Error('Only completed orders can generate a remito.');
-      if (!order.finishTime) throw new Error('Missing finish date/time.');
-      if (!order.buildingId) throw new Error('Missing building.');
-  
-      // 2) Fetch building for address
+      if (order.status !== 'Completed') {
+        throw new Error('Only completed orders can generate a remito.');
+      }
+      if (!order.finishTime) {
+        throw new Error('Missing finish date/time.');
+      }
+      if (!order.buildingId) {
+        throw new Error('Missing building.');
+      }
+
       const building = await supabaseDataLayer.getBuilding(order.buildingId, companyId);
-      if (!building?.address) throw new Error('Building address not found.');
-  
-      // 3) Get next number (atomic)
+      if (!building?.address) {
+        throw new Error('Building address not found.');
+      }
+
       const remitoNumber = await supabaseDataLayer.getNextRemitoNumber(companyId);
-  
-      // 4) Compose payload for rendering
+
       const payload = {
         number8d: remitoNumber,
         fechaDDMMYYYY: new Date(order.finishTime).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }),
@@ -92,20 +95,17 @@ export default function WorkOrderDetail() {
         descripcion: (order.comments ?? '').trim(),
         firmaDataUrl: order.signatureDataUrl ?? undefined,
       };
-  
-      // 6) Render PDF in the browser
-      const pdfBlob = await renderRemitoPdf(payload);
 
-      // NEW: Upload the PDF to Supabase Storage
+      const pdfBytes = await generateRemitoPdf(payload);
+      const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+
       const publicUrl = await supabaseDataLayer.uploadRemitoPdf(pdfBlob, companyId, order.id, remitoNumber);
       if (!publicUrl) {
         throw new Error('Failed to upload remito PDF.');
       }
 
-      // 8) Persist audit record (one per work order) with the public URL
       await supabaseDataLayer.upsertRemitoRecord(companyId, order.id, remitoNumber, publicUrl);
 
-      // 7) Trigger download (using the public URL)
       const a = document.createElement('a');
       a.href = publicUrl;
       a.download = `remito_${remitoNumber}.pdf`;
@@ -114,6 +114,7 @@ export default function WorkOrderDetail() {
       a.remove();
 
     } catch (err) {
+      console.error('Error in handleDownloadRemito:', err);
       alert((err as Error).message || 'Error generating remito.');
     } finally {
       setLoadingRemito(false);

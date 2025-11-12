@@ -428,11 +428,11 @@ async updateWorkOrder(id: string, updates: Partial<WorkOrder>, companyId: string
   },
 
   async uploadRemitoPdf(file: Blob, companyId: string, workOrderId: string, remitoNumber: string): Promise<string | null> {
-    const bucket = 'remitos'; // Assuming a 'remitos' bucket exists
+    const bucket = 'remitos';
     const path = `${companyId}/${workOrderId}/remito_${remitoNumber}.pdf`;
     const { error } = await supabase.storage.from(bucket).upload(path, file, {
       cacheControl: '3600',
-      upsert: true, // Overwrite if it already exists
+      upsert: true,
       contentType: 'application/pdf',
     });
     if (error) {
@@ -443,34 +443,22 @@ async updateWorkOrder(id: string, updates: Partial<WorkOrder>, companyId: string
     return data?.publicUrl || null;
   },
 
-  /* ========== Remitos (plantillas y numerador) ========== */
-  async getDefaultRemitoTemplate(companyId: string) {
-    const { data, error } = await supabase
-      .from('remito_templates')
-      .select('*')
-      .eq('company_id', companyId)
-      .eq('is_default', true)
-      .maybeSingle();
+  async getNextRemitoNumber(companyId: string): Promise<string> {
+    const { data, error } = await supabase.rpc('get_next_remito_no', { p_company_id: companyId });
     if (error) throw error;
-    return data;
+    return data as string;
   },
 
-  async listRemitoTemplates(companyId: string) {
-    const { data, error } = await supabase
-      .from('remito_templates')
-      .select('*')
-      .eq('company_id', companyId)
-      .order('updated_at', { ascending: false });
+  async upsertRemitoRecord(companyId: string, workOrderId: string, remitoNumber: string, fileUrl: string): Promise<void> {
+    const { error } = await supabase
+      .from('remitos')
+      .upsert({
+        company_id: companyId,
+        work_order_id: workOrderId,
+        remito_number: remitoNumber,
+        file_url: fileUrl,
+      }, { onConflict: 'work_order_id' });
     if (error) throw error;
-    return data || [];
-  },
-
-  async getNextRemitoNo(companyId: string) {
-    const { data, error } = await supabase.rpc('get_next_remito_no', {
-      p_company_id: companyId,
-    });
-    if (error) throw error;
-    return data as number;
   },
 
   /* ========== Equipments (CRUD) ========== */
