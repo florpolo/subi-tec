@@ -427,6 +427,22 @@ async updateWorkOrder(id: string, updates: Partial<WorkOrder>, companyId: string
     return data?.publicUrl || null;
   },
 
+  async uploadRemitoPdf(file: Blob, companyId: string, workOrderId: string, remitoNumber: string): Promise<string | null> {
+    const bucket = 'remitos'; // Assuming a 'remitos' bucket exists
+    const path = `${companyId}/${workOrderId}/remito_${remitoNumber}.pdf`;
+    const { error } = await supabase.storage.from(bucket).upload(path, file, {
+      cacheControl: '3600',
+      upsert: true, // Overwrite if it already exists
+      contentType: 'application/pdf',
+    });
+    if (error) {
+      console.error('uploadRemitoPdf error', error);
+      return null;
+    }
+    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+    return data?.publicUrl || null;
+  },
+
   /* ========== Remitos (plantillas y numerador) ========== */
   async getDefaultRemitoTemplate(companyId: string) {
     const { data, error } = await supabase
