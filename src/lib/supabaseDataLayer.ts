@@ -371,6 +371,31 @@ async updateWorkOrder(id: string, updates: Partial<WorkOrder>, companyId: string
   return data || null;
 },
 
+  async completeWorkOrder(
+    workOrderId: string,
+    companyId: string,
+    payload?: {
+      comments?: string | null;
+      partsUsed?: Array<{ name: string; quantity: number }> | null;
+      photoUrls?: string[] | null;
+      signatureDataUrl?: string | null;
+      forceOverwriteFinishTime?: boolean;
+    }
+  ): Promise<WorkOrder | null> {
+    const { data, error } = await supabase.rpc('complete_work_order', {
+      _work_order_id: workOrderId,
+      _company_id: companyId,
+      _comments: payload?.comments ?? null,
+      _parts_used: payload?.partsUsed ?? null,
+      _photo_urls: payload?.photoUrls ?? null,
+      _signature_data_url: payload?.signatureDataUrl ?? null,
+      _force_overwrite_finish_time: payload?.forceOverwriteFinishTime ?? false,
+    });
+
+    if (error) throw error;
+    return (data && data.length > 0) ? data[0] as WorkOrder : null;
+  },
+
 
   /* ========== Elevator History ========== */
   async addElevatorHistory(
@@ -428,33 +453,27 @@ async updateWorkOrder(id: string, updates: Partial<WorkOrder>, companyId: string
   },
 
   /* ========== Remitos (plantillas y numerador) ========== */
-  async getDefaultRemitoTemplate(companyId: string) {
+  async getSharedRemitoTemplate() {
     const { data, error } = await supabase
       .from('remito_templates')
       .select('*')
-      .eq('company_id', companyId)
       .eq('is_default', true)
       .maybeSingle();
     if (error) throw error;
     return data;
   },
 
-  async listRemitoTemplates(companyId: string) {
-    const { data, error } = await supabase
-      .from('remito_templates')
-      .select('*')
-      .eq('company_id', companyId)
-      .order('updated_at', { ascending: false });
+  async getNextRemitoNumber(companyId: string) {
+    const { data, error } = await supabase.rpc('get_next_remito_no', { p_company_id: companyId });
     if (error) throw error;
-    return data || [];
+    return data as string; // "00000042"
   },
 
-  async getNextRemitoNo(companyId: string) {
-    const { data, error } = await supabase.rpc('get_next_remito_no', {
-      p_company_id: companyId,
-    });
+  async upsertRemitoRecord(companyId: string, workOrderId: string, remitoNumber: string, fileUrl: string) {
+    const { error } = await supabase
+      .from('remitos')
+      .upsert({ company_id: companyId, work_order_id: workOrderId, remito_number: remitoNumber, file_url: fileUrl }, { onConflict: 'work_order_id' });
     if (error) throw error;
-    return data as number;
   },
 
   /* ========== Equipments (CRUD) ========== */

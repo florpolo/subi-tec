@@ -43,6 +43,7 @@ export interface Technician {
 
 export interface WorkOrder {
   id: string;
+  companyId: string;
   claimType: 'Reclamo' | 'Inspección' | 'Reparación presupuestada' | 'Reparación correctiva';
   correctiveType?: 'Minor Repair' | 'Refurbishment' | 'Installation';
   buildingId: string;
@@ -138,6 +139,7 @@ function mapTechnician(t: SupabaseTechnician): Technician {
 function mapWorkOrder(w: SupabaseWorkOrder): WorkOrder {
   return {
     id: w.id,
+    companyId: w.company_id,
     claimType: w.claim_type as 'Reclamo' | 'Inspección' | 'Reparación presupuestada' | 'Reparación correctiva',
     correctiveType: w.corrective_type as 'Minor Repair' | 'Refurbishment' | 'Installation' | undefined,
     buildingId: w.building_id,

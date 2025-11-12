@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   dataLayer,
@@ -9,13 +9,15 @@ import {
   ElevatorHistory,
   Equipment
 } from '../lib/dataLayer';
-import { ArrowLeft, FileText, Paperclip, Package, History, Edit } from 'lucide-react';
-import DownloadWorkOrderPDF from '../components/downloadpdf';
-import RemitoRenderer from '../components/RemitoRenderer';
+import { ArrowLeft, FileText, Paperclip, Package, History, Edit, CheckCircle } from 'lucide-react'; // Added CheckCircle
+import { renderRemitoPdf } from '../components/RemitoRenderer';
+import { supabaseDataLayer } from '../lib/supabaseDataLayer';
+import { useAuth } from '../contexts/AuthContext'; // Assuming useAuth exists
 
 export default function WorkOrderDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user, companyId } = useAuth(); // Get user and companyId from AuthContext
 
   const [order, setOrder] = useState<WorkOrder | null>(null);
   const [building, setBuilding] = useState<Building | null>(null);
@@ -25,22 +27,13 @@ export default function WorkOrderDetail() {
   const [elevatorHistory, setElevatorHistory] = useState<ElevatorHistory[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'attachments' | 'parts' | 'history'>('overview');
   const [error, setError] = useState<string | null>(null);
-
-  // Remito (UI state)
-  const [showRemito, setShowRemito] = useState(false);
-  const [remitoTemplate, setRemitoTemplate] = useState<any | null>(null);
-  const [remitoNumber, setRemitoNumber] = useState<string | null>(null);
   const [loadingRemito, setLoadingRemito] = useState(false);
-  const [remitoError, setRemitoError] = useState<string | null>(null);
+  const [completingTask, setCompletingTask] = useState(false); // New state for completing task
 
-  // Fallback manual para probar una plantilla sin depender de Supabase (dejar "" cuando no se use)
-  const FORCE_REMITO_URL =
-    "https://qoxmccvysxjvraqchlhy.supabase.co/storage/v1/object/public/remitos/remito%20ascensores%20carballino.jpg";
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setError(null);
-      if (!id) return;
+      if (!id || id === 'undefined') return;
 
       const foundOrder = await dataLayer.getWorkOrder(id);
       if (!foundOrder) {
@@ -69,87 +62,136 @@ export default function WorkOrderDetail() {
         const techData = await dataLayer.getTechnician(foundOrder.technicianId);
         setTechnician(techData || null);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('WorkOrderDetail loadData error:', e);
-      setError(e?.message ?? String(e));
+      setError((e as Error)?.message ?? String(e));
     }
-  };
+  }, [id, navigate]); // Removed companyId, user from dependency array to prevent unnecessary re-runs
 
-  // Acción "Generar remito": busca template + número y abre el modal
-  const handleOpenRemito = async () => {
-    if (!order) return;
+  const handleDownloadRemito = async () => {
+    if (!order || !companyId) return; // Use companyId from useAuth
+    setLoadingRemito(true);
     try {
-      setRemitoError(null);
-      setLoadingRemito(true);
+      // 1) Guard clauses
+      if (order.status !== 'Completed') throw new Error('Only completed orders can generate a remito.');
+      if (!order.finishTime) throw new Error('Missing finish date/time.');
+      if (!order.buildingId) throw new Error('Missing building.');
+  
+      // 2) Fetch building for address
+      const building = await supabaseDataLayer.getBuilding(order.buildingId, companyId); // Use companyId
+      if (!building?.address) throw new Error('Building address not found.');
+  
+      // 3) Get next number (atomic)
+      const remitoNumber = await supabaseDataLayer.getNextRemitoNumber(companyId); // Use companyId
+  
+      // 4) Compose payload for rendering
+      const payload = {
+        number8d: remitoNumber,
+        fechaDDMMYYYY: new Date(order.finishTime).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+        domicilio: building.address,
+        descripcion: (order.comments ?? '').trim(),
+        firmaDataUrl: order.signatureDataUrl ?? undefined, // dataURL or public URL
+      };
+  
+      // 6) Render PDF in the browser
+      const pdfBlob = await renderRemitoPdf(payload);
+  
+      // 7) Trigger download
+      const url = URL.createObjectURL(pdfBlob);
 
-      // --- Fallback manual para probar con una URL directa ---
-      if (FORCE_REMITO_URL) {
-        setRemitoTemplate({
-          image_url: FORCE_REMITO_URL,
-          name: 'Remito (manual)',
-          fields: {
-            number: { x: 0.545, y: 0.165, bold: true, fontSize: 22 },
-            date: {
-              city: { x: 0.135, y: 0.256, label: "Buenos Aires," },
-              day: { x: 0.305, y: 0.256 },
-              month: { x: 0.465, y: 0.256 },
-              y20: { x: 0.645, y: 0.256, label: "20" },
-              yy: { x: 0.705, y: 0.256 }
-            },
-            addressLine: { x: 0.115, y: 0.302, fontSize: 16 },
-            addressNumber: { x: 0.655, y: 0.302 },
-            descriptionBox: { x: 0.075, y: 0.355, w: 0.845, h: 0.48, fontSize: 15, lineHeight: 18 },
-            signatureBox: { x: 0.605, y: 0.86, w: 0.28, h: 0.07 }
-          }
-        });
-        setRemitoNumber("00000001"); // Número simulado para test
-        setShowRemito(true);
-        return; // Evita seguir a Supabase si estás probando
-      }
-      // --- Fin fallback ---
-
-      // 1) Plantilla por defecto de la empresa activa (Supabase)
-      const tpl = await dataLayer.getDefaultRemitoTemplate();
-      if (!tpl) {
-        throw new Error('No hay plantilla de remito configurada para esta empresa.');
-      }
-
-      // 2) Parsear fields si vinieron como string
-      const fields = typeof tpl.fields === 'string' ? JSON.parse(tpl.fields) : tpl.fields;
-
-      // 3) Obtener número secuencial (RPC)
-      const n = await dataLayer.getNextRemitoNo();
-      const padded = String(n).padStart(8, '0');
-
-      // 4) Guardar en estado y abrir modal
-      setRemitoTemplate({ image_url: tpl.image_url, fields, name: tpl.name ?? 'Remito' });
-      setRemitoNumber(padded);
-      setShowRemito(true);
-    } catch (e: any) {
-      console.error('Remito error:', e);
-      setRemitoError(e?.message ?? String(e));
+      // 8) Persist audit record (one per work order)
+      await supabaseDataLayer.upsertRemitoRecord(companyId, order.id, remitoNumber, url); // Use companyId
+  
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `remito_${remitoNumber}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err) {
+      alert((err as Error).message || 'Error generating remito.');
     } finally {
       setLoadingRemito(false);
     }
   };
 
+  const handleCompleteTask = async () => {
+    if (!order || !companyId || !user?.id) {
+      alert('Missing order, company ID, or user information.');
+      return;
+    }
+
+    // Guard: Prevent re-completion if already completed
+    if (order.status === 'Completed') {
+      alert('Esta orden de trabajo ya está completada.');
+      return;
+    }
+
+    // Guard: Only assigned technician can complete (or admin, but prompt focuses on technician)
+    // Assuming `user.id` is the technician's user_id from auth.users,
+    // and `order.technicianId` is the id from the `technicians` table.
+    // This check needs to be aligned with how your technicians are linked to auth.users.
+    // For now, a simple check:
+    if (order.technicianId && technician && technician.user_id && technician.user_id !== user.id) {
+        alert('No estás autorizado para completar esta orden de trabajo.');
+        return;
+    }
+
+    // Validate required fields for completion (e.g., signature)
+    if (!order.signatureDataUrl) {
+      alert('La firma del cliente es requerida para completar esta orden de trabajo.');
+      return;
+    }
+
+    if (!window.confirm('¿Marcar esta orden de trabajo como Completada?')) {
+      return; // User cancelled
+    }
+
+    setCompletingTask(true);
+    const originalOrder = { ...order }; // Save original for optimistic UI revert
+
+    try {
+      // Optimistic UI update
+      setOrder(prevOrder => prevOrder ? {
+        ...prevOrder,
+        status: 'Completed',
+        finishTime: new Date().toISOString(), // Set finish time immediately (local time)
+      } : null);
+
+      // Call the new RPC to complete the work order
+      const updatedOrder = await supabaseDataLayer.completeWorkOrder(
+        order.id,
+        companyId,
+        {
+          comments: order.comments,
+          partsUsed: order.partsUsed,
+          photoUrls: order.photoUrls,
+          signatureDataUrl: order.signatureDataUrl,
+        }
+      );
+
+      if (updatedOrder) {
+        // Use the updatedOrder from the server to reflect server-set finish_time more accurately
+        setOrder(updatedOrder); 
+        alert('¡Orden de trabajo marcada como Completada!'); // Success toast (replace with actual toast library)
+      } else {
+        throw new Error('Failed to receive updated work order from server.');
+      }
+
+    } catch (err) {
+      console.error('Error completing task:', err);
+      setOrder(originalOrder); // Revert optimistic UI
+      alert((err as Error).message || 'Error al completar la tarea. Inténtalo de nuevo.'); // Error toast
+    } finally {
+      setCompletingTask(false);
+    }
+  };
+
+
   useEffect(() => {
     loadData();
-  }, [id]);
-
-  if (error) {
-    return (
-      <div className="p-6">
-        <Link to="/orders" className="inline-flex items-center gap-2 text-[#694e35] underline">
-          <ArrowLeft size={20} /> Volver a Órdenes
-        </Link>
-        <div className="mt-4 rounded-lg border border-red-300 bg-red-50 p-4 text-red-800">
-          <div className="font-bold mb-1">Error cargando la orden</div>
-          <div className="text-sm">{error}</div>
-        </div>
-      </div>
-    );
-  }
+  }, [id, loadData]);
 
   if (!order) {
     return (
@@ -158,6 +200,7 @@ export default function WorkOrderDetail() {
       </div>
     );
   }
+
 
   const getStatusLabel = (status: string) => {
     switch (status) {
@@ -264,9 +307,29 @@ export default function WorkOrderDetail() {
             >
               <Edit size={18} />
               Editar
-            </Link>
+            </Link>            
+            {order.status !== 'Completed' && ( // Only show if not completed
+                <button
+                  onClick={handleCompleteTask}
+                  disabled={completingTask}
+                  className="inline-flex items-center gap-2 rounded-lg bg-green-500 px-4 py-2 font-bold text-white hover:bg-green-600 disabled:opacity-60"
+                >
+                  <CheckCircle size={18} />
+                  {completingTask ? 'Completando...' : 'Completar Tarea'}
+                </button>
+            )}
+
+            {order.status === 'Completed' && (
+                <button
+                  onClick={handleDownloadRemito}
+                  disabled={loadingRemito}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#fcca53] px-4 py-2 font-bold text-[#694e35] hover:bg-[#ffe5a5] disabled:opacity-60"
+                >
+                  {loadingRemito ? 'Generando remito...' : 'Descargar Remito'}
+                </button>
+              )}
+            </div>
           </div>
-        </div>
 
         {/* Tabs */}
         <div className="border-b border-[#d4caaf] mb-6">
@@ -290,6 +353,8 @@ export default function WorkOrderDetail() {
             })}
           </div>
         </div>
+
+
 
         {/* ===== Contenido por tab ===== */}
         {activeTab === 'overview' && (
@@ -482,55 +547,16 @@ export default function WorkOrderDetail() {
 
             {/* Botones al final del resumen */}
             <div className="pt-2 flex flex-wrap gap-3">
-              <DownloadWorkOrderPDF
-                order={order}
-                building={building}
-                elevator={elevator}
-                technician={technician}
-                companyName="SubiTec"
-                className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-4 py-2 font-bold text-[#520f0f] hover:bg-yellow-400"
-                label="Descargar PDF"
-              />
-
-              <button
-                onClick={handleOpenRemito}
-                disabled={loadingRemito}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#fcca53] px-4 py-2 font-bold text-[#694e35] hover:bg-[#ffe5a5] disabled:opacity-60"
-              >
-                {loadingRemito ? 'Generando remito...' : 'Generar Remito'}
-              </button>
-
-              {remitoError && (
-                <span className="text-red-700 text-sm">{remitoError}</span>
+              {order.status === 'Completed' && (
+                <button
+                  onClick={handleDownloadRemito}
+                  disabled={loadingRemito}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#fcca53] px-4 py-2 font-bold text-[#694e35] hover:bg-[#ffe5a5] disabled:opacity-60"
+                >
+                  {loadingRemito ? 'Generando remito...' : 'Descargar Remito'}
+                </button>
               )}
             </div>
-
-            {/* Modal Remito */}
-            {showRemito && remitoTemplate && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                <div className="w-full max-w-4xl rounded-xl bg-white p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-bold text-[#694e35]">
-                      {remitoTemplate?.name ?? 'Remito'}
-                      {remitoNumber ? ` · Nº ${remitoNumber}` : ''}
-                    </h3>
-                    <button
-                      onClick={() => setShowRemito(false)}
-                      className="rounded px-3 py-1 border border-[#d4caaf] hover:bg-[#f4ead0]"
-                    >
-                      Cerrar
-                    </button>
-                  </div>
-
-                  <RemitoRenderer
-                    order={order}
-                    building={building ?? undefined}
-                    template={remitoTemplate}
-                    remitoNumber={remitoNumber ?? undefined}
-                  />
-                </div>
-              </div>
-            )}
           </div>
         )}
 
