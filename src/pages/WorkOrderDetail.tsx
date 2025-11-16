@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   dataLayer,
@@ -6,27 +6,34 @@ import {
   Building,
   Elevator,
   Technician,
-  ElevatorHistory
+  ElevatorHistory,
+  Equipment
 } from '../lib/dataLayer';
-import { ArrowLeft, FileText, Paperclip, Package, History, Edit } from 'lucide-react';
-import DownloadWorkOrderPDF from '../components/downloadpdf';
+import { ArrowLeft, FileText, Paperclip, Package, History, Edit, CheckCircle } from 'lucide-react';
+import { generateRemitoPdf } from '../lib/RemitoGenerator';
+import { supabaseDataLayer } from '../lib/supabaseDataLayer';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function WorkOrderDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user, companyId } = useAuth();
 
   const [order, setOrder] = useState<WorkOrder | null>(null);
   const [building, setBuilding] = useState<Building | null>(null);
   const [elevator, setElevator] = useState<Elevator | null>(null);
+  const [equipment, setEquipment] = useState<Equipment | null>(null);
   const [technician, setTechnician] = useState<Technician | null>(null);
   const [elevatorHistory, setElevatorHistory] = useState<ElevatorHistory[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'attachments' | 'parts' | 'history'>('overview');
   const [error, setError] = useState<string | null>(null);
+  const [loadingRemito, setLoadingRemito] = useState(false);
+  const [completingTask, setCompletingTask] = useState(false);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setError(null);
-      if (!id) return;
+      if (!id || id === 'undefined') return;
 
       const foundOrder = await dataLayer.getWorkOrder(id);
       if (!foundOrder) {
@@ -35,43 +42,151 @@ export default function WorkOrderDetail() {
       }
       setOrder(foundOrder);
 
-      const [buildingData, elevatorData, historyData] = await Promise.all([
-        dataLayer.getBuilding(foundOrder.buildingId),
-        dataLayer.getElevator(foundOrder.elevatorId),
-        dataLayer.getElevatorHistory(foundOrder.elevatorId)
-      ]);
-
+      const buildingData = await dataLayer.getBuilding(foundOrder.buildingId);
       setBuilding(buildingData || null);
-      setElevator(elevatorData || null);
-      setElevatorHistory(historyData || []);
+
+      if (foundOrder.elevatorId) {
+        const [elevatorData, historyData] = await Promise.all([
+          dataLayer.getElevator(foundOrder.elevatorId),
+          dataLayer.getElevatorHistory(foundOrder.elevatorId)
+        ]);
+        setElevator(elevatorData || null);
+        setElevatorHistory(historyData || []);
+      } else if (foundOrder.equipmentId) {
+        const equipmentData = await dataLayer.getEquipment(foundOrder.equipmentId);
+        setEquipment(equipmentData || null);
+      }
 
       if (foundOrder.technicianId) {
         const techData = await dataLayer.getTechnician(foundOrder.technicianId);
         setTechnician(techData || null);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('WorkOrderDetail loadData error:', e);
-      setError(e?.message ?? String(e));
+      setError((e as Error)?.message ?? String(e));
+    }
+  }, [id, navigate]);
+
+  const handleDownloadRemito = async () => {
+    if (!order || !companyId) return;
+    setLoadingRemito(true);
+    try {
+      if (order.status !== 'Completed') {
+        throw new Error('Only completed orders can generate a remito.');
+      }
+      if (!order.finishTime) {
+        throw new Error('Missing finish date/time.');
+      }
+      if (!order.buildingId) {
+        throw new Error('Missing building.');
+      }
+
+      const building = await supabaseDataLayer.getBuilding(order.buildingId, companyId);
+      if (!building?.address) {
+        throw new Error('Building address not found.');
+      }
+
+      const remitoNumber = await supabaseDataLayer.getNextRemitoNumber(companyId);
+
+      const payload = {
+        number8d: remitoNumber,
+        fechaDDMMYYYY: new Date(order.finishTime).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+        domicilio: building.address,
+        descripcion: (order.comments ?? '').trim(),
+        firmaDataUrl: order.signatureDataUrl ?? undefined,
+      };
+
+      const pdfBytes = await generateRemitoPdf(payload);
+      const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+
+      const publicUrl = await supabaseDataLayer.uploadRemitoPdf(pdfBlob, companyId, order.id, remitoNumber);
+      if (!publicUrl) {
+        throw new Error('Failed to upload remito PDF.');
+      }
+
+      await supabaseDataLayer.upsertRemitoRecord(companyId, order.id, remitoNumber, publicUrl);
+
+      const a = document.createElement('a');
+      a.href = publicUrl;
+      a.download = `remito_${remitoNumber}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+    } catch (err) {
+      console.error('Error in handleDownloadRemito:', err);
+      alert((err as Error).message || 'Error generating remito.');
+    } finally {
+      setLoadingRemito(false);
     }
   };
 
+  const handleCompleteTask = async () => {
+    if (!order || !companyId || !user?.id) {
+      alert('Missing order, company ID, or user information.');
+      return;
+    }
+
+    if (order.status === 'Completed') {
+      alert('Esta orden de trabajo ya está completada.');
+      return;
+    }
+
+    if (order.technicianId && technician && technician.user_id && technician.user_id !== user.id) {
+        alert('No estás autorizado para completar esta orden de trabajo.');
+        return;
+    }
+
+    if (!order.signatureDataUrl) {
+      alert('La firma del cliente es requerida para completar esta orden de trabajo.');
+      return;
+    }
+
+    if (!window.confirm('¿Marcar esta orden de trabajo como Completada?')) {
+      return;
+    }
+
+    setCompletingTask(true);
+    const originalOrder = { ...order };
+
+    try {
+      setOrder(prevOrder => prevOrder ? {
+        ...prevOrder,
+        status: 'Completed',
+        finishTime: new Date().toISOString(),
+      } : null);
+
+      const updatedOrder = await supabaseDataLayer.completeWorkOrder(
+        order.id,
+        companyId,
+        {
+          comments: order.comments,
+          partsUsed: order.partsUsed,
+          photoUrls: order.photoUrls,
+          signatureDataUrl: order.signatureDataUrl,
+        }
+      );
+
+      if (updatedOrder) {
+        setOrder(updatedOrder); 
+        alert('¡Orden de trabajo marcada como Completada!');
+      } else {
+        throw new Error('Failed to receive updated work order from server.');
+      }
+
+    } catch (err) {
+      console.error('Error completing task:', err);
+      setOrder(originalOrder);
+      alert((err as Error).message || 'Error al completar la tarea. Inténtalo de nuevo.');
+    } finally {
+      setCompletingTask(false);
+    }
+  };
+
+
   useEffect(() => {
     loadData();
-  }, [id]);
-
-  if (error) {
-    return (
-      <div className="p-6">
-        <Link to="/orders" className="inline-flex items-center gap-2 text-[#694e35] underline">
-          <ArrowLeft size={20} /> Volver a Órdenes
-        </Link>
-        <div className="mt-4 rounded-lg border border-red-300 bg-red-50 p-4 text-red-800">
-          <div className="font-bold mb-1">Error cargando la orden</div>
-          <div className="text-sm">{error}</div>
-        </div>
-      </div>
-    );
-  }
+  }, [id, loadData]);
 
   if (!order) {
     return (
@@ -80,6 +195,7 @@ export default function WorkOrderDetail() {
       </div>
     );
   }
+
 
   const getStatusLabel = (status: string) => {
     switch (status) {
@@ -186,9 +302,29 @@ export default function WorkOrderDetail() {
             >
               <Edit size={18} />
               Editar
-            </Link>
+            </Link>            
+            {order.status !== 'Completed' && ( // Only show if not completed
+                <button
+                  onClick={handleCompleteTask}
+                  disabled={completingTask}
+                  className="inline-flex items-center gap-2 rounded-lg bg-green-500 px-4 py-2 font-bold text-white hover:bg-green-600 disabled:opacity-60"
+                >
+                  <CheckCircle size={18} />
+                  {completingTask ? 'Completando...' : 'Completar Tarea'}
+                </button>
+            )}
+
+            {order.status === 'Completed' && (
+                <button
+                  onClick={handleDownloadRemito}
+                  disabled={loadingRemito}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#fcca53] px-4 py-2 font-bold text-[#694e35] hover:bg-[#ffe5a5] disabled:opacity-60"
+                >
+                  {loadingRemito ? 'Generando remito...' : 'Descargar Remito'}
+                </button>
+              )}
+            </div>
           </div>
-        </div>
 
         {/* Tabs */}
         <div className="border-b border-[#d4caaf] mb-6">
@@ -213,63 +349,60 @@ export default function WorkOrderDetail() {
           </div>
         </div>
 
+
+
         {/* ===== Contenido por tab ===== */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
-            {/* 1) Información del Reclamo + 2) Ubicación + 3) Asignación */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Información del Reclamo */}
-          {/* 1) Información del Reclamo */}
-<div>
-  <h3 className="font-bold text-[#694e35] mb-3">Información del Reclamo</h3>
-  <div className="space-y-2 text-sm">
-    <div>
-      <span className="text-[#5e4c1e]">Tipo:</span>{' '}
-      <span className="font-medium text-[#694e35]">
-        {getClaimTypeLabel(order.claimType)}
-      </span>
-    </div>
+              <div>
+                <h3 className="font-bold text-[#694e35] mb-3">Información del Reclamo</h3>
+                <div className="space-y-2 text-sm">
+                  <div>
+                    <span className="text-[#5e4c1e]">Tipo:</span>{' '}
+                    <span className="font-medium text-[#694e35]">
+                      {getClaimTypeLabel(order.claimType)}
+                    </span>
+                  </div>
 
-    {order.correctiveType && (
-      <div>
-        <span className="text-[#5e4c1e]">Tipo de Correctivo:</span>{' '}
-        <span className="font-medium text-[#694e35]">
-          {getCorrectiveTypeLabel(order.correctiveType)}
-        </span>
-      </div>
-    )}
+                  {order.correctiveType && (
+                    <div>
+                      <span className="text-[#5e4c1e]">Tipo de Correctivo:</span>{' '}
+                      <span className="font-medium text-[#694e35]">
+                        {getCorrectiveTypeLabel(order.correctiveType)}
+                      </span>
+                    </div>
+                  )}
 
-    <div>
-      <span className="text-[#5e4c1e]">Descripción:</span>{' '}
-      <span className="font-medium text-[#694e35]">{order.description}</span>
-    </div>
+                  <div>
+                    <span className="text-[#5e4c1e]">Descripción:</span>{' '}
+                    <span className="font-medium text-[#694e35]">{order.description}</span>
+                  </div>
 
-    {order.dateTime && (
-      <div>
-        <span className="text-[#5e4c1e]">Programada:</span>{' '}
-        <span className="font-medium text-[#694e35]">
-          {new Date(order.dateTime).toLocaleString('es-AR', {
-            day: '2-digit', month: '2-digit', year: 'numeric',
-            hour: '2-digit', minute: '2-digit',
-          })}
-        </span>
-      </div>
-    )}
+                  {order.dateTime && (
+                    <div>
+                      <span className="text-[#5e4c1e]">Programada:</span>{' '}
+                      <span className="font-medium text-[#694e35]">
+                        {new Date(order.dateTime).toLocaleString('es-AR', {
+                          day: '2-digit', month: '2-digit', year: 'numeric',
+                          hour: '2-digit', minute: '2-digit',
+                        })}
+                      </span>
+                    </div>
+                  )}
 
-    <div>
-      <span className="text-[#5e4c1e]">Creada:</span>{' '}
-      <span className="font-medium text-[#694e35]">
-        {new Date(order.createdAt).toLocaleString('es-AR', {
-          day: '2-digit', month: '2-digit', year: 'numeric',
-          hour: '2-digit', minute: '2-digit',
-        })}
-      </span>
-    </div>
-  </div>
-</div>
+                  <div>
+                    <span className="text-[#5e4c1e]">Creada:</span>{' '}
+                    <span className="font-medium text-[#694e35]">
+                      {new Date(order.createdAt).toLocaleString('es-AR', {
+                        day: '2-digit', month: '2-digit', year: 'numeric',
+                        hour: '2-digit', minute: '2-digit',
+                      })}
+                    </span>
+                  </div>
+                </div>
+              </div>
 
-
-              {/* Ubicación */}
               <div>
                 <h3 className="font-bold text-[#694e35] mb-3">Ubicación</h3>
                 <div className="space-y-2 text-sm">
@@ -286,20 +419,30 @@ export default function WorkOrderDetail() {
                     </span>
                   </div>
                   <div>
-                    <span className="text-[#5e4c1e]">Ascensor:</span>{' '}
-                    <Link
-                      to={`/elevators/${elevator?.id}`}
-                      className="font-medium text-[#694e35] hover:text-[#fcca53] underline"
-                    >
-                      {elevator
-                        ? `${elevator.number} - ${elevator.locationDescription}`
-                        : 'Desconocido'}
-                    </Link>
+                    <span className="text-[#5e4c1e]">{equipment ? 'Equipo:' : 'Ascensor:'}</span>{' '}
+                    {elevator && (
+                      <Link
+                        to={`/elevators/${elevator.id}`}
+                        className="font-medium text-[#694e35] hover:text-[#fcca53] underline"
+                      >
+                        {`${elevator.number} - ${elevator.locationDescription}`}
+                      </Link>
+                    )}
+                    {equipment && (
+                      <Link
+                        to={`/equipment/${equipment.id}`}
+                        className="font-medium text-[#694e35] hover:text-[#fcca53] underline"
+                      >
+                        {`${equipment.name} - ${equipment.locationDescription}`}
+                      </Link>
+                    )}
+                    {!elevator && !equipment && (
+                      <span className="font-medium text-[#694e35]">Desconocido</span>
+                    )}
                   </div>
                 </div>
               </div>
 
-              {/* Asignación */}
               <div>
                 <h3 className="font-bold text-[#694e35] mb-3">Asignación</h3>
                 <div className="space-y-2 text-sm">
@@ -341,37 +484,6 @@ export default function WorkOrderDetail() {
               </div>
             </div>
 
-            {/* Repuestos usados (debajo de Asignación) */}
-            <div className="mt-2 rounded-xl border border-yellow-200 bg-yellow-50/60 p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="font-bold text-[#694e35]">Repuestos usados</h3>
-              </div>
-
-              {order?.partsUsed?.length ? (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead>
-                      <tr className="text-left text-[#694e35]">
-                        <th className="py-2 pr-3">Nombre del repuesto</th>
-                        <th className="py-2 pr-3">Cantidad</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-[#d4caaf]">
-                      {order.partsUsed.map((part, idx) => (
-                        <tr key={idx}>
-                          <td className="py-2 pr-3 text-[#694e35] font-medium">{part?.name ?? ''}</td>
-                          <td className="py-2 pr-3 text-[#694e35]">{part?.quantity ?? ''}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <p className="text-[#5e4c1e]">No se utilizaron repuestos</p>
-              )}
-            </div>
-
-            {/* Comentarios (si querés arriba de Firma, dejalo aquí) */}
             {order.comments && (
               <div>
                 <h3 className="font-bold text-[#694e35] mb-3">Comentarios</h3>
@@ -381,7 +493,6 @@ export default function WorkOrderDetail() {
               </div>
             )}
 
-            {/* Firma del Cliente (al final del contenido) */}
             {order.signatureDataUrl && (
               <div>
                 <h3 className="font-bold text-[#694e35] mb-3">Firma del Cliente</h3>
@@ -392,21 +503,6 @@ export default function WorkOrderDetail() {
                 />
               </div>
             )}
-
-            {/* Botón Descargar PDF (al final de TODO el resumen) */}
-            <div className="pt-2">
-         <DownloadWorkOrderPDF
-  order={order}
-  building={building}
-  elevator={elevator}
-  technician={technician}
-  companyName="SubiTec"            // <- o lo que corresponda
-  // companyName={building?.name}  // <- si querés usar el nombre del cliente/consorcio
-  className="inline-flex items-center gap-2 rounded-lg bg-yellow-500 px-4 py-2 font-bold text-[#520f0f] hover:bg-yellow-400"
-  label="Descargar PDF"
-/>
-
-            </div>
           </div>
         )}
 
@@ -488,7 +584,6 @@ export default function WorkOrderDetail() {
             )}
           </div>
         )}
-        {/* ===== Fin contenido por tab ===== */}
       </div>
     </div>
   );
