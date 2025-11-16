@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { dataLayer, Building, Elevator, Equipment, EquipmentType } from '../lib/dataLayer';
-import { Building2, Plus, Edit } from 'lucide-react';
+import { Building2, Plus, Edit, X } from 'lucide-react';
 import usePreserveScroll from '../hooks/usePreserveScroll';
 
 export default function Buildings() {
@@ -16,6 +16,12 @@ export default function Buildings() {
   const [editContactPhone, setEditContactPhone] = useState('');
   const [editEntryHours, setEditEntryHours] = useState('');
   const [editClientName, setEditClientName] = useState('');
+
+  // State for new elevator form
+  const [showNewElevatorForm, setShowNewElevatorForm] = useState<string | null>(null); // Stores buildingId for which to show form
+  const [newElevatorNumber, setNewElevatorNumber] = useState<number>(1);
+  const [newElevatorLocation, setNewElevatorLocation] = useState('');
+  const [newElevatorPlateNumber, setNewElevatorPlateNumber] = useState('');
 
   const filteredAndSortedBuildings = useMemo(() => {
     return buildings
@@ -107,7 +113,32 @@ export default function Buildings() {
     await loadData();
   };
 
-
+  const handleCreateElevator = async (buildingId: string) => {
+    if (!newElevatorLocation.trim()) {
+      alert('Por favor ingrese la ubicación del ascensor');
+      return;
+    }
+    const newElevator = await dataLayer.createElevator({
+      buildingId,
+      number: newElevatorNumber,
+      locationDescription: newElevatorLocation.trim(),
+      hasTwoDoors: false,
+      status: 'fit',
+      stops: 8,
+      capacity: 450,
+      machineRoomLocation: 'Azotea',
+      controlType: 'Automático',
+      plateNumber: newElevatorPlateNumber.trim(),
+    });
+    if (newElevator) {
+      alert('Ascensor creado exitosamente!');
+      setShowNewElevatorForm(null);
+      setNewElevatorNumber(1);
+      setNewElevatorLocation('');
+      setNewElevatorPlateNumber('');
+      await loadData();
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -293,14 +324,60 @@ export default function Buildings() {
                   <div>
                     <div className="flex items-center justify-between mb-3">
                       <h4 className="font-bold text-[#694e35]">Ascensores ({getBuildingElevators(building.id).length})</h4>
-                      <Link
-                        to={`/buildings/${building.id}/edit`}
+                      <button
+                        type="button"
+                        onClick={() => setShowNewElevatorForm(building.id)}
                         className="flex items-center gap-1 px-3 py-1 text-sm bg-[#fcca53] text-[#694e35] rounded-lg font-medium hover:bg-[#ffe5a5] transition-colors focus:outline-none focus:ring-2 focus:ring-[#694e35]"
                       >
                         <Plus size={16} />
-                        Agregar equipo
-                      </Link>
+                        Agregar ascensor
+                      </button>
                     </div>
+
+                    {showNewElevatorForm === building.id && (
+                      <div className="mt-4 p-4 bg-white rounded-lg border-2 border-[#d4caaf] space-y-3">
+                        <h4 className="font-bold text-[#694e35]">Nuevo Ascensor</h4>
+                        <input
+                          type="number"
+                          placeholder="Número *"
+                          value={newElevatorNumber}
+                          onChange={(e) => setNewElevatorNumber(parseInt(e.target.value) || 1)}
+                          className="w-full px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Ubicación (ej: a la izquierda de la entrada) *"
+                          value={newElevatorLocation}
+                          onChange={(e) => setNewElevatorLocation(e.target.value)}
+                          className="w-full px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Número de patente"
+                          value={newElevatorPlateNumber}
+                          onChange={(e) => setNewElevatorPlateNumber(e.target.value)}
+                          className="w-full px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowNewElevatorForm(null)}
+                            className="flex-1 px-4 py-2 bg-[#d4caaf] text-[#694e35] rounded-lg font-medium hover:bg-[#bda386] transition-colors"
+                          >
+                            <X size={16} className="inline-block mr-1" />
+                            Cancelar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCreateElevator(building.id)}
+                            className="flex-1 px-4 py-2 bg-[#fcca53] text-[#694e35] rounded-lg font-bold hover:bg-[#ffe5a5] transition-colors"
+                          >
+                            <Plus size={16} className="inline-block mr-1" />
+                            Crear Ascensor
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {getBuildingElevators(building.id).length === 0 ? (
                       <p className="text-[#5e4c1e] text-sm">No hay ascensores en este edificio</p>
