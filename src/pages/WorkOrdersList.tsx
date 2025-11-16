@@ -221,8 +221,6 @@ export default function WorkOrdersList() {
     } else if (activeKpiFilter === 'unassigned') {
       filtered = filtered.filter(o => o.status === 'Pending' && !o.technicianId);
     }
-    // si activeKpiFilter === 'today' ya se filtró arriba
-    // si es otro valor no contemplado, no se aplica filtro extra de estado
 
     // Prioridad / Técnico
     if (priorityFilter) {
@@ -295,8 +293,8 @@ export default function WorkOrdersList() {
     { label: 'Por hacer', value: kpis.pending, icon: Clock, filter: 'Pending' },
     { label: 'Por asignar', value: kpis.unassigned, icon: AlertCircle, filter: 'unassigned' },
     { label: 'En curso', value: kpis.inProgress, icon: PlayCircle, filter: 'In Progress' },
-    // Completadas hoy
-    { label: 'Completadas', value: kpis.completed, icon: CheckCircle, filter: 'Completed' },
+    // Completadas hoy (cambio de texto acá)
+    { label: 'Completadas del día', value: kpis.completed, icon: CheckCircle, filter: 'Completed' },
     // "Pestaña" nueva: todas las completadas (hoy + anteriores)
     { label: 'Todas las completadas', value: ordersRaw.filter(o => o.status === 'Completed').length, icon: CheckCircle, filter: 'CompletedAll' },
   ];
