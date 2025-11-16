@@ -18,8 +18,9 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   activeCompanyId: string | null;
-  activeCompanyRole: 'office' | 'technician' | null;
+  activeCompanyRole: 'office' | 'technician' | 'engineer' | null;
   companyMemberships: CompanyMember[];
+  engineerId: string | null;
   setActiveCompany: (companyId: string) => void;
   signOut: () => Promise<void>;
 }
@@ -31,8 +32,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeCompanyId, setActiveCompanyId] = useState<string | null>(null);
-  const [activeCompanyRole, setActiveCompanyRole] = useState<'office' | 'technician' | null>(null);
+  const [activeCompanyRole, setActiveCompanyRole] = useState<'office' | 'technician' | 'engineer' | null>(null);
   const [companyMemberships, setCompanyMemberships] = useState<CompanyMember[]>([]);
+  const [engineerId, setEngineerId] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -69,6 +71,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loadCompanyMemberships = async (userId: string) => {
+    const { data: engineerData } = await supabase
+      .from('engineers')
+      .select('id, company_id')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (engineerData) {
+      setEngineerId(engineerData.id);
+      setActiveCompanyId(engineerData.company_id);
+      setActiveCompanyRole('engineer');
+      setCurrentCompanyId(engineerData.company_id);
+      setCompanyMemberships([]);
+      return;
+    }
+
     const { data, error } = await supabase
       .from('company_members')
       .select(`
@@ -86,6 +103,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (data && data.length > 0) {
       setCompanyMemberships(data as CompanyMember[]);
+      setEngineerId(null);
 
       const storedCompanyId = localStorage.getItem('activeCompanyId');
       const validStoredCompany = data.find(m => m.company_id === storedCompanyId);
@@ -120,6 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setActiveCompanyId(null);
     setActiveCompanyRole(null);
     setCompanyMemberships([]);
+    setEngineerId(null);
     localStorage.removeItem('activeCompanyId');
     setCurrentCompanyId(null);
   };
@@ -133,6 +152,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         activeCompanyId,
         activeCompanyRole,
         companyMemberships,
+        engineerId,
         setActiveCompany,
         signOut,
       }}
