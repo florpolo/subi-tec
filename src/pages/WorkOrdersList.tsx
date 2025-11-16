@@ -99,8 +99,17 @@ export default function WorkOrdersList() {
   const [searchTerm, setSearchTerm] = useState<string>(() => sessionStorage.getItem('workOrders_searchTerm') || '');
   const [dateFilter, setDateFilter] = useState<string>(() => sessionStorage.getItem('workOrders_dateFilter') || '');
 
-  // KPIs (siempre sobre visibilidad base = todas las órdenes)
-  const [kpis, setKpis] = useState({ total: 0, pending: 0, unassigned: 0, inProgress: 0, completed: 0 });
+  // KPIs (sobre visibilidad base = todas las órdenes)
+  // total => "Hoy" (Pending con fecha programada = hoy)
+  // pending => "Por hacer" (Pending sin fecha, con fecha ≠ hoy, o sin técnico)
+  // completed => Completadas hoy
+  const [kpis, setKpis] = useState({
+    total: 0,
+    pending: 0,
+    unassigned: 0,
+    inProgress: 0,
+    completed: 0,
+  });
 
   useEffect(() => {
     sessionStorage.setItem('workOrders_activeKpiFilter', activeKpiFilter);
@@ -123,14 +132,47 @@ export default function WorkOrdersList() {
     setElevators(elevatorsList);
     setTechnicians(techniciansList);
 
-    // KPIs sobre TODAS las órdenes (sin limpieza por día)
+    // KPIs con la lógica nueva
     const base = baseVisibility(allOrders);
+    const todayKey = baDayKey(new Date());
+
+    // "Hoy": Pending con fecha programada = hoy (BA)
+    const pendingToday = base.filter((o: any) => {
+      if (o.status !== 'Pending') return false;
+      const when = getRelevantInstant(o);
+      if (!when) return false;
+      return baDayKey(when) === todayKey;
+    });
+
+    // "Por hacer":
+    // - Pending sin fecha programada
+    // - Pending con fecha programada ≠ hoy
+    // - Pending sin técnico asignado
+    const toDo = base.filter((o: any) => {
+      if (o.status !== 'Pending') return false;
+      const when = getRelevantInstant(o); // programada para Pending
+      const noDateOrDifferentDay = !when || baDayKey(when) !== todayKey;
+      const noTechnician = !o.technicianId;
+      return noDateOrDifferentDay || noTechnician;
+    });
+
+    const unassigned = base.filter(o => o.status === 'Pending' && !o.technicianId);
+    const inProgress = base.filter(o => o.status === 'In Progress');
+
+    // "Completadas": Completed cuya fecha de finalización = hoy (BA)
+    const completedToday = base.filter((o: any) => {
+      if (o.status !== 'Completed') return false;
+      const when = getRelevantInstant(o); // finalización para Completed
+      if (!when) return false;
+      return baDayKey(when) === todayKey;
+    });
+
     setKpis({
-      total: base.length,
-      pending: base.filter(o => o.status === 'Pending').length,
-      unassigned: base.filter(o => o.status === 'Pending' && !o.technicianId).length,
-      inProgress: base.filter(o => o.status === 'In Progress').length,
-      completed: base.filter(o => o.status === 'Completed').length,
+      total: pendingToday.length,
+      pending: toDo.length,
+      unassigned: unassigned.length,
+      inProgress: inProgress.length,
+      completed: completedToday.length,
     });
   };
 
@@ -143,17 +185,44 @@ export default function WorkOrdersList() {
   // --------- PIPELINE DE VISUALIZACIÓN ---------
   const visible = useMemo(() => {
     let filtered: WorkOrder[] = baseVisibility(ordersRaw);
+    const todayKey = baDayKey(new Date());
 
-    // KPI (estado) como filtro de la lista
-    if (activeKpiFilter === 'Pending') {
-      filtered = filtered.filter(o => o.status === 'Pending');
+    // KPI (estado) como filtro de la lista, según la lógica nueva
+    if (activeKpiFilter === 'today') {
+      // "Hoy": Pending con fecha programada = hoy
+      filtered = filtered.filter((o: any) => {
+        if (o.status !== 'Pending') return false;
+        const when = getRelevantInstant(o);
+        if (!when) return false;
+        return baDayKey(when) === todayKey;
+      });
+    } else if (activeKpiFilter === 'Pending') {
+      // "Por hacer": Pending sin fecha, con fecha ≠ hoy o sin técnico
+      filtered = filtered.filter((o: any) => {
+        if (o.status !== 'Pending') return false;
+        const when = getRelevantInstant(o);
+        const noDateOrDifferentDay = !when || baDayKey(when) !== todayKey;
+        const noTechnician = !o.technicianId;
+        return noDateOrDifferentDay || noTechnician;
+      });
     } else if (activeKpiFilter === 'In Progress') {
       filtered = filtered.filter(o => o.status === 'In Progress');
     } else if (activeKpiFilter === 'Completed') {
+      // Completadas hoy
+      filtered = filtered.filter((o: any) => {
+        if (o.status !== 'Completed') return false;
+        const when = getRelevantInstant(o);
+        if (!when) return false;
+        return baDayKey(when) === todayKey;
+      });
+    } else if (activeKpiFilter === 'CompletedAll') {
+      // Nueva "pestaña": todas las completadas (sin importar fecha)
       filtered = filtered.filter(o => o.status === 'Completed');
     } else if (activeKpiFilter === 'unassigned') {
       filtered = filtered.filter(o => o.status === 'Pending' && !o.technicianId);
-    } // 'today' => sin filtro extra
+    }
+    // si activeKpiFilter === 'today' ya se filtró arriba
+    // si es otro valor no contemplado, no se aplica filtro extra de estado
 
     // Prioridad / Técnico
     if (priorityFilter) {
@@ -220,11 +289,16 @@ export default function WorkOrdersList() {
 
   // KPIs (números fijos sobre base; al click filtran la lista)
   const kpiCards = [
-    { label: 'Total', value: kpis.total, icon: FileText, filter: 'today' },
+    // "Hoy": Pending con fecha programada = hoy
+    { label: 'Hoy', value: kpis.total, icon: FileText, filter: 'today' },
+    // "Por hacer" con la lógica nueva
     { label: 'Por hacer', value: kpis.pending, icon: Clock, filter: 'Pending' },
     { label: 'Por asignar', value: kpis.unassigned, icon: AlertCircle, filter: 'unassigned' },
     { label: 'En curso', value: kpis.inProgress, icon: PlayCircle, filter: 'In Progress' },
+    // Completadas hoy
     { label: 'Completadas', value: kpis.completed, icon: CheckCircle, filter: 'Completed' },
+    // "Pestaña" nueva: todas las completadas (hoy + anteriores)
+    { label: 'Todas las completadas', value: ordersRaw.filter(o => o.status === 'Completed').length, icon: CheckCircle, filter: 'CompletedAll' },
   ];
 
   const handleKpiClick = (filter: string) => {
@@ -248,7 +322,7 @@ export default function WorkOrdersList() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         {kpiCards.map((kpi) => {
           const Icon = kpi.icon;
           const isActive = activeKpiFilter === kpi.filter;
