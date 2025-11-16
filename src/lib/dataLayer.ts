@@ -652,7 +652,10 @@ export function setCurrentCompanyId(companyId: string | null) {
 export const dataLayer = new Proxy({} as ReturnType<typeof createDataLayer>, {
   get(target, prop) {
     if (!currentCompanyId) {
-      throw new Error('No company ID set. Cannot access dataLayer.');
+      return async () => {
+        console.warn(`Attempted to access dataLayer.${String(prop)} without a company ID set.`);
+        return null;
+      };
     }
     const layer = createDataLayer(currentCompanyId);
     return layer[prop as keyof typeof layer];
