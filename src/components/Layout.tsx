@@ -14,7 +14,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 interface LayoutProps {
   children: ReactNode;
-  viewMode?: 'office' | 'technician' | 'engineer';
+  viewMode?: 'office' | 'technician';
 }
 
 export default function Layout({ children, viewMode = 'office' }: LayoutProps) {
@@ -27,11 +27,9 @@ export default function Layout({ children, viewMode = 'office' }: LayoutProps) {
     { to: '/orders', icon: FileText, label: 'Órdenes' },
     { to: '/buildings', icon: Building2, label: 'Edificios' },
     { to: '/technicians', icon: Users, label: 'Técnicos' },
-    { to: '/engineers', icon: Users, label: 'Ingenieros' },
   ];
   const technicianLinks = [{ to: '/my-tasks', icon: ClipboardList, label: 'Mis Tareas' }];
-  const engineerLinks = [{ to: '/engineer-reports', icon: FileText, label: 'Mis Reportes' }];
-  const links = viewMode === 'office' ? officeLinks : viewMode === 'technician' ? technicianLinks : engineerLinks;
+  const links = viewMode === 'office' ? officeLinks : technicianLinks;
 
   const isActive = (path: string) => {
     if (path === '/orders' && location.pathname === '/') return true;
@@ -57,7 +55,7 @@ export default function Layout({ children, viewMode = 'office' }: LayoutProps) {
             >
               {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
-            <Link to={viewMode === 'office' ? '/orders' : viewMode === 'technician' ? '/my-tasks' : '/engineer-reports'} className="flex items-center gap-3">
+            <Link to={viewMode === 'office' ? '/orders' : '/my-tasks'} className="flex items-center gap-3">
               {/* logo */}
               <img src="/SUBITEC-LOGO-02 (1).svg" alt="Subitec Logo" className="h-14 w-auto" />
             </Link>

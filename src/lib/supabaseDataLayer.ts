@@ -46,8 +46,7 @@ export interface WorkOrder {
   claim_type: 'Semiannual Tests' | 'Monthly Maintenance' | 'Corrective';
   corrective_type?: 'Minor Repair' | 'Refurbishment' | 'Installation';
   building_id: string;
-  elevator_id?: string | null;
-  equipment_id?: string | null;
+  elevator_id: string;
   technician_id?: string | null;
   contact_name: string;
   contact_phone: string;
@@ -100,35 +99,7 @@ export interface Equipment {
   created_at?: string;
 }
 
-export interface Engineer {
-  id: string;
-  company_id: string;
-  user_id?: string | null;
-  name: string;
-  contact: string | null;
-  created_at?: string;
-}
-
-export interface EngineerReport {
-  id: string;
-  company_id: string;
-  engineer_id: string;
-  address: string;
-  comments: string | null;
-  is_read: boolean;
-  created_at: string;
-}
-
 /** ====== Utilidades ====== */
-const toNull = (v: any) => {
-  if (v === undefined || v === null) return null;
-  if (typeof v === 'string') {
-    const s = v.trim().toLowerCase();
-    if (s === '' || s === 'undefined' || s === 'null') return null;
-  }
-  return v;
-};
-
 function dataUrlToBlob(dataUrl: string): Blob {
   // "data:image/png;base64,AAAA..."
   const [meta, b64] = dataUrl.split(',');
@@ -140,12 +111,15 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([arr], { type: mime });
 }
 
-/* ===== Data Layer (CRUD) ===== */
+/** =======================================================
+ *  Capa CRUD directa a tablas/buckets de Supabase
+ *  (todas las funciones scoped por companyId)
+ *  ======================================================= */
 export const supabaseDataLayer = {
   /* ========== Buildings ========== */
   async listBuildings(companyId: string): Promise<Building[]> {
     const { data, error } = await supabase
-      .from<Building>('buildings')
+      .from('buildings')
       .select('*')
       .eq('company_id', companyId)
       .order('created_at', { ascending: false });
@@ -155,23 +129,30 @@ export const supabaseDataLayer = {
 
   async getBuilding(id: string, companyId: string): Promise<Building | null> {
     const { data, error } = await supabase
-      .from<Building>('buildings')
+      .from('buildings')
       .select('*')
       .eq('company_id', companyId)
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
-    return data || null;
+    return (data as Building) || null;
   },
 
-  async createBuilding(building: Omit<Building, 'id' | 'created_at'>, companyId: string): Promise<Building | null> {
+  async createBuilding(
+    building: Omit<Building, 'id' | 'created_at'>,
+    companyId: string
+  ): Promise<Building | null> {
     const payload = { ...building, company_id: companyId };
     const { data, error } = await supabase.from<Building>('buildings').insert(payload).select().maybeSingle();
     if (error) throw error;
     return data || null;
   },
 
-  async updateBuilding(id: string, updates: Partial<Building>, companyId: string): Promise<Building | null> {
+  async updateBuilding(
+    id: string,
+    updates: Partial<Building>,
+    companyId: string
+  ): Promise<Building | null> {
     const { data, error } = await supabase
       .from<Building>('buildings')
       .update(updates)
@@ -203,14 +184,21 @@ export const supabaseDataLayer = {
     return data || null;
   },
 
-  async createElevator(elevator: Omit<Elevator, 'id' | 'created_at'>, companyId: string): Promise<Elevator | null> {
+  async createElevator(
+    elevator: Omit<Elevator, 'id' | 'created_at'>,
+    companyId: string
+  ): Promise<Elevator | null> {
     const payload = { ...elevator, company_id: companyId };
     const { data, error } = await supabase.from<Elevator>('elevators').insert(payload).select().maybeSingle();
     if (error) throw error;
     return data || null;
   },
 
-  async updateElevator(id: string, updates: Partial<Elevator>, companyId: string): Promise<Elevator | null> {
+  async updateElevator(
+    id: string,
+    updates: Partial<Elevator>,
+    companyId: string
+  ): Promise<Elevator | null> {
     const { data, error } = await supabase
       .from<Elevator>('elevators')
       .update(updates)
@@ -220,11 +208,6 @@ export const supabaseDataLayer = {
       .maybeSingle();
     if (error) throw error;
     return data || null;
-  },
-
-  async deleteElevator(id: string, companyId: string): Promise<void> {
-    const { error } = await supabase.from<Elevator>('elevators').delete().eq('company_id', companyId).eq('id', id);
-    if (error) throw error;
   },
 
   /* ========== Technicians ========== */
@@ -249,14 +232,21 @@ export const supabaseDataLayer = {
     return data || null;
   },
 
-  async createTechnician(technician: Omit<Technician, 'id' | 'created_at'>, companyId: string): Promise<Technician | null> {
+  async createTechnician(
+    technician: Omit<Technician, 'id' | 'created_at'>,
+    companyId: string
+  ): Promise<Technician | null> {
     const payload = { ...technician, company_id: companyId };
     const { data, error } = await supabase.from<Technician>('technicians').insert(payload).select().maybeSingle();
     if (error) throw error;
     return data || null;
   },
 
-  async updateTechnician(id: string, updates: Partial<Technician>, companyId: string): Promise<Technician | null> {
+  async updateTechnician(
+    id: string,
+    updates: Partial<Technician>,
+    companyId: string
+  ): Promise<Technician | null> {
     const { data, error } = await supabase
       .from<Technician>('technicians')
       .update(updates)
@@ -268,9 +258,11 @@ export const supabaseDataLayer = {
     return data || null;
   },
 
-  // Estado simple: 'free' | 'busy' (conservando tu lógica)
-  async getTechnicianStatus(technicianId: string, companyId: string): Promise<'free' | 'busy'> {
-    // Implementación de ejemplo: si tiene órdenes "In Progress" => 'busy'
+  /** ===== Semáforo unificado: solo 'free' (verde) o 'busy' (rojo) ===== */
+  async getTechnicianStatus(
+    technicianId: string,
+    companyId: string
+  ): Promise<'free' | 'busy'> {
     const { data, error } = await supabase
       .from<WorkOrder>('work_orders')
       .select('id')
@@ -278,8 +270,30 @@ export const supabaseDataLayer = {
       .eq('technician_id', technicianId)
       .eq('status', 'In Progress')
       .limit(1);
+
     if (error) throw error;
-    return (data && data.length > 0) ? 'busy' : 'free';
+    return data && data.length > 0 ? 'busy' : 'free';
+  },
+
+  /** (Opcional) Mapa de OTs en curso por técnico: { technician_id: count } */
+  async countInProgressByTechnician(
+    companyId: string
+  ): Promise<Record<string, number>> {
+    const { data, error } = await supabase
+      .from<WorkOrder>('work_orders')
+      .select('technician_id')
+      .eq('company_id', companyId)
+      .eq('status', 'In Progress');
+
+    if (error) throw error;
+
+    const acc: Record<string, number> = {};
+    for (const row of (data || [])) {
+      const tid = row.technician_id as string | null;
+      if (!tid) continue;
+      acc[tid] = (acc[tid] ?? 0) + 1;
+    }
+    return acc;
   },
 
   /* ========== Work Orders ========== */
@@ -290,8 +304,6 @@ export const supabaseDataLayer = {
       priority?: string;
       technician_id?: string;
       building_id?: string;
-      elevator_id?: string;
-      equipment_id?: string;
     }
   ): Promise<WorkOrder[]> {
     let q = supabase.from<WorkOrder>('work_orders').select('*').eq('company_id', companyId);
@@ -300,8 +312,6 @@ export const supabaseDataLayer = {
     if (filters?.priority) q = q.eq('priority', filters.priority);
     if (filters?.technician_id !== undefined) q = q.eq('technician_id', filters.technician_id);
     if (filters?.building_id) q = q.eq('building_id', filters.building_id);
-    if (filters?.elevator_id) q = q.eq('elevator_id', filters.elevator_id);
-    if (filters?.equipment_id) q = q.eq('equipment_id', filters.equipment_id);
 
     const { data, error } = await q.order('created_at', { ascending: false });
     if (error) throw error;
@@ -319,77 +329,31 @@ export const supabaseDataLayer = {
     return data || null;
   },
 
-  // >>>>>>> ÚNICO CAMBIO IMPORTANTE: sin spread, mapeo explícito + saneo de UUIDs/opcionales
-async createWorkOrder(
-  order: Omit<WorkOrder, 'id' | 'created_at'>,
-  companyId: string
-): Promise<WorkOrder | null> {
-  // helper: permite leer snake o camel sin romper lo ya existente
-  const get = (a: any, snake: string, camel: string) =>
-    (a as any)[snake] ?? (a as any)[camel];
+  async createWorkOrder(
+    order: Omit<WorkOrder, 'id' | 'created_at'>,
+    companyId: string
+  ): Promise<WorkOrder | null> {
+    const payload = { ...order, company_id: companyId };
+    const { data, error } = await supabase.from<WorkOrder>('work_orders').insert(payload).select().maybeSingle();
+    if (error) throw error;
+    return data || null;
+  },
 
-  // Armado explícito del payload (sin spread para no colar "undefined")
-  const payload: any = {
-    company_id: companyId,
-
-    claim_type:         get(order, 'claim_type', 'claimType'),
-    corrective_type:    toNull(get(order, 'corrective_type', 'correctiveType')),
-
-    // OJO: acá sí camel correcto
-    building_id:        get(order, 'building_id', 'buildingId'),
-
-    // Saneamos SIEMPRE los UUID opcionales
-    elevator_id:        toNull(get(order, 'elevator_id', 'elevatorId')),
-    equipment_id:       toNull(get(order, 'equipment_id', 'equipmentId')),
-    technician_id:      toNull(get(order, 'technician_id', 'technicianId')),
-
-    contact_name:       get(order, 'contact_name', 'contactName') ?? '',
-    contact_phone:      get(order, 'contact_phone', 'contactPhone') ?? '',
-
-    date_time:          toNull(get(order, 'date_time', 'dateTime')),
-    description:        get(order, 'description', 'description') ?? '',
-    status:             get(order, 'status', 'status') ?? 'Pending',
-    priority:           get(order, 'priority', 'priority') ?? 'Low',
-
-    start_time:         toNull(get(order, 'start_time', 'startTime')),
-    finish_time:        toNull(get(order, 'finish_time', 'finishTime')),
-
-    comments:           get(order, 'comments', 'comments') ?? null,
-    parts_used:         get(order, 'parts_used', 'partsUsed') ?? null,
-    photo_urls:         get(order, 'photo_urls', 'photoUrls') ?? null,
-    signature_data_url: get(order, 'signature_data_url', 'signatureDataUrl') ?? null,
-  };
-
-  // Guardas defensivas antes del insert
-  if (!payload.building_id) {
-    throw new Error('building_id es requerido para crear la orden');
-  }
-  if (!payload.elevator_id && !payload.equipment_id) {
-    throw new Error('Debés asignar un ascensor o un equipo a la orden');
-  }
-
-  const { data, error } = await supabase
-    .from<WorkOrder>('work_orders')
-    .insert(payload)       // objeto único ok
-    .select()
-    .maybeSingle();
-
-  if (error) throw error;
-  return data || null;
-},
-
-async updateWorkOrder(id: string, updates: Partial<WorkOrder>, companyId: string): Promise<WorkOrder | null> {
-  const { data, error } = await supabase
-    .from<WorkOrder>('work_orders')
-    .update(updates)
-    .eq('company_id', companyId)
-    .eq('id', id)
-    .select()
-    .maybeSingle();
-  if (error) throw error;
-  return data || null;
-},
-
+  async updateWorkOrder(
+    id: string,
+    updates: Partial<WorkOrder>,
+    companyId: string
+  ): Promise<WorkOrder | null> {
+    const { data, error } = await supabase
+      .from<WorkOrder>('work_orders')
+      .update(updates)
+      .eq('company_id', companyId)
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  },
 
   /* ========== Elevator History ========== */
   async addElevatorHistory(
@@ -446,40 +410,6 @@ async updateWorkOrder(id: string, updates: Partial<WorkOrder>, companyId: string
     return data?.publicUrl || null;
   },
 
-  async uploadRemitoPdf(file: Blob, companyId: string, workOrderId: string, remitoNumber: string): Promise<string | null> {
-    const bucket = 'remitos';
-    const path = `${companyId}/${workOrderId}/remito_${remitoNumber}.pdf`;
-    const { error } = await supabase.storage.from(bucket).upload(path, file, {
-      cacheControl: '3600',
-      upsert: true,
-      contentType: 'application/pdf',
-    });
-    if (error) {
-      console.error('uploadRemitoPdf error', error);
-      return null;
-    }
-    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-    return data?.publicUrl || null;
-  },
-
-  async getNextRemitoNumber(companyId: string): Promise<string> {
-    const { data, error } = await supabase.rpc('get_next_remito_no', { p_company_id: companyId });
-    if (error) throw error;
-    return data as string;
-  },
-
-  async upsertRemitoRecord(companyId: string, workOrderId: string, remitoNumber: string, fileUrl: string): Promise<void> {
-    const { error } = await supabase
-      .from('remitos')
-      .upsert({
-        company_id: companyId,
-        work_order_id: workOrderId,
-        remito_number: remitoNumber,
-        file_url: fileUrl,
-      }, { onConflict: 'work_order_id' });
-    if (error) throw error;
-  },
-
   /* ========== Equipments (CRUD) ========== */
   async listEquipments(companyId: string, buildingId?: string): Promise<Equipment[]> {
     let q = supabase.from<Equipment>('equipments').select('*').eq('company_id', companyId);
@@ -500,14 +430,21 @@ async updateWorkOrder(id: string, updates: Partial<WorkOrder>, companyId: string
     return data || null;
   },
 
-  async createEquipment(equipment: Omit<Equipment, 'id' | 'created_at'>, companyId: string): Promise<Equipment | null> {
-    const payload = { ...equipment, company_id: companyId };
-    const { data, error } = await supabase.from<Equipment>('equipments').insert(payload).select().maybeSingle();
+  async createEquipment(
+    payload: Omit<Equipment, 'id' | 'created_at'>,
+    companyId: string
+  ): Promise<Equipment | null> {
+    const row = { ...payload, company_id: companyId };
+    const { data, error } = await supabase.from<Equipment>('equipments').insert(row).select().maybeSingle();
     if (error) throw error;
     return data || null;
   },
 
-  async updateEquipment(id: string, updates: Partial<Equipment>, companyId: string): Promise<Equipment | null> {
+  async updateEquipment(
+    id: string,
+    updates: Partial<Equipment>,
+    companyId: string
+  ): Promise<Equipment | null> {
     const { data, error } = await supabase
       .from<Equipment>('equipments')
       .update(updates)
@@ -520,129 +457,12 @@ async updateWorkOrder(id: string, updates: Partial<WorkOrder>, companyId: string
   },
 
   async deleteEquipment(id: string, companyId: string): Promise<void> {
-    const { error } = await supabase.from<Equipment>('equipments').delete().eq('company_id', companyId).eq('id', id);
-    if (error) throw error;
-  },
-
-  /* ========== Engineers ========== */
-  async listEngineers(companyId: string): Promise<Engineer[]> {
-    const { data, error } = await supabase
-      .from<Engineer>('engineers')
-      .select('*')
+    const { error } = await supabase
+      .from<Equipment>('equipments')
+      .delete()
       .eq('company_id', companyId)
-      .order('created_at', { ascending: false });
+      .eq('id', id);
     if (error) throw error;
-    return (data || []) as Engineer[];
-  },
-
-  async getEngineer(id: string, companyId: string): Promise<Engineer | null> {
-    const { data, error } = await supabase
-      .from<Engineer>('engineers')
-      .select('*')
-      .eq('company_id', companyId)
-      .eq('id', id)
-      .maybeSingle();
-    if (error) throw error;
-    return data || null;
-  },
-
-  async getEngineerByUserId(userId: string): Promise<Engineer | null> {
-    const { data, error } = await supabase
-      .from<Engineer>('engineers')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
-    if (error) throw error;
-    return data || null;
-  },
-
-  async createEngineer(
-    engineer: Omit<Engineer, 'id' | 'created_at'>,
-    companyId: string
-  ): Promise<Engineer | null> {
-    const payload = { ...engineer, company_id: companyId };
-    const { data, error } = await supabase.from<Engineer>('engineers').insert(payload).select().maybeSingle();
-    if (error) throw error;
-    return data || null;
-  },
-
-  async updateEngineer(
-    id: string,
-    updates: Partial<Engineer>,
-    companyId: string
-  ): Promise<Engineer | null> {
-    const { data, error } = await supabase
-      .from<Engineer>('engineers')
-      .update(updates)
-      .eq('company_id', companyId)
-      .eq('id', id)
-      .select()
-      .maybeSingle();
-    if (error) throw error;
-    return data || null;
-  },
-
-  /* ========== Engineer Reports ========== */
-  async listEngineerReports(companyId: string, engineerId?: string): Promise<EngineerReport[]> {
-    let q = supabase.from<EngineerReport>('engineer_reports').select('*').eq('company_id', companyId);
-    if (engineerId) q = q.eq('engineer_id', engineerId);
-    const { data, error } = await q.order('created_at', { ascending: false });
-    if (error) throw error;
-    return (data || []) as EngineerReport[];
-  },
-
-  async getEngineerReport(id: string, companyId: string): Promise<EngineerReport | null> {
-    const { data, error } = await supabase
-      .from<EngineerReport>('engineer_reports')
-      .select('*')
-      .eq('company_id', companyId)
-      .eq('id', id)
-      .maybeSingle();
-    if (error) throw error;
-    return data || null;
-  },
-
-  async createEngineerReport(
-    report: Omit<EngineerReport, 'id' | 'created_at'>,
-    companyId: string
-  ): Promise<EngineerReport | null> {
-    const payload = { ...report, company_id: companyId };
-    const { data, error } = await supabase.from<EngineerReport>('engineer_reports').insert(payload).select().maybeSingle();
-    if (error) throw error;
-    return data || null;
-  },
-
-  async updateEngineerReport(
-    id: string,
-    updates: Partial<EngineerReport>,
-    companyId: string
-  ): Promise<EngineerReport | null> {
-    const { data, error } = await supabase
-      .from<EngineerReport>('engineer_reports')
-      .update(updates)
-      .eq('company_id', companyId)
-      .eq('id', id)
-      .select()
-      .maybeSingle();
-    if (error) throw error;
-    return data || null;
-  },
-
-  async countUnreadReportsByEngineer(companyId: string): Promise<Record<string, number>> {
-    const { data, error } = await supabase
-      .from<EngineerReport>('engineer_reports')
-      .select('engineer_id')
-      .eq('company_id', companyId)
-      .eq('is_read', false);
-
-    if (error) throw error;
-
-    const acc: Record<string, number> = {};
-    for (const row of (data || [])) {
-      const eid = row.engineer_id as string;
-      acc[eid] = (acc[eid] ?? 0) + 1;
-    }
-    return acc;
   },
 };
 
@@ -654,6 +474,4 @@ export type {
   ElevatorHistory as _ElevatorHistory,
   Equipment as _Equipment,
   EquipmentType as _EquipmentType,
-  Engineer as _Engineer,
-  EngineerReport as _EngineerReport,
 };
