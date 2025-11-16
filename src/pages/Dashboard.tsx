@@ -39,9 +39,11 @@ export default function Dashboard() {
     return building?.address || 'Unknown';
   };
 
-  const getElevatorInfo = (elevatorId: string) => {
+  const getElevatorInfo = (elevatorId?: string) => {
+    if (!elevatorId) return 'N/A';
     const elevator = elevators.find(e => e.id === elevatorId);
-    return elevator ? `${elevator.number} - ${elevator.locationDescription}` : 'Unknown';
+    if (!elevator) return 'Unknown';
+    return `#${elevator.number} - ${elevator.locationDescription}${elevator.plateNumber ? ` (${elevator.plateNumber})` : ''}`;
   };
 
   const getTechnicianName = (technicianId?: string) => {

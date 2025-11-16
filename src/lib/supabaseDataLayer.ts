@@ -26,6 +26,7 @@ export interface Elevator {
   capacity: number;
   machine_room_location: string;
   control_type: string;
+  plate_number?: string;
   created_at?: string;
 }
 
@@ -185,7 +186,7 @@ export const supabaseDataLayer = {
   },
 
   async createElevator(elevator: Omit<Elevator, 'id' | 'created_at'>, companyId: string): Promise<Elevator | null> {
-    const payload = { ...elevator, company_id: companyId };
+    const payload = { ...elevator, company_id: companyId, plate_number: elevator.plate_number ?? null };
     const { data, error } = await supabase.from<Elevator>('elevators').insert(payload).select().maybeSingle();
     if (error) throw error;
     return data || null;
@@ -194,7 +195,7 @@ export const supabaseDataLayer = {
   async updateElevator(id: string, updates: Partial<Elevator>, companyId: string): Promise<Elevator | null> {
     const { data, error } = await supabase
       .from<Elevator>('elevators')
-      .update(updates)
+      .update({ ...updates, plate_number: updates.plate_number ?? null })
       .eq('company_id', companyId)
       .eq('id', id)
       .select()

@@ -271,9 +271,11 @@ export default function WorkOrdersList() {
     const building = buildings.find(b => b.id === buildingId);
     return building?.address || 'Desconocido';
   };
-  const getElevatorInfo = (elevatorId: string) => {
+  const getElevatorInfo = (elevatorId?: string) => {
+    if (!elevatorId) return 'N/A';
     const elevator = elevators.find(e => e.id === elevatorId);
-    return elevator ? `${elevator.number} - ${elevator.locationDescription}` : 'Desconocido';
+    if (!elevator) return 'Desconocido';
+    return `#${elevator.number} - ${elevator.locationDescription}${elevator.plateNumber ? ` (${elevator.plateNumber})` : ''}`;
   };
   const getTechnicianName = (technicianId?: string) => {
     if (!technicianId) return 'Sin asignar';

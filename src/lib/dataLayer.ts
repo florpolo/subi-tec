@@ -31,6 +31,7 @@ export interface Elevator {
   capacity: number;
   machineRoomLocation: string;
   controlType: string;
+  plateNumber?: string;
 }
 
 export interface Technician {

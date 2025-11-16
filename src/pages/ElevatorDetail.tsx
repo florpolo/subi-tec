@@ -27,6 +27,7 @@ export default function ElevatorDetail() {
   const [editControlType, setEditControlType] = useState('');
   const [editMachineRoom, setEditMachineRoom] = useState('');
   const [editTwoDoors, setEditTwoDoors] = useState(false);
+  const [editPlateNumber, setEditPlateNumber] = useState('');
   const [editHistory, setEditHistory] = useState<HistoryItemEdit[]>([]);
 
   const loadData = async () => {
@@ -63,6 +64,7 @@ export default function ElevatorDetail() {
     setEditControlType(elevator.controlType);
     setEditMachineRoom(elevator.machineRoomLocation);
     setEditTwoDoors(elevator.hasTwoDoors);
+    setEditPlateNumber(elevator.plateNumber || '');
     setEditHistory(history.map(h => ({
       id: h.id,
       date: h.date.split('T')[0],
@@ -91,6 +93,7 @@ export default function ElevatorDetail() {
       controlType: editControlType.trim(),
       machineRoomLocation: editMachineRoom.trim(),
       hasTwoDoors: editTwoDoors,
+      plateNumber: editPlateNumber.trim(),
     });
 
     // Handle history updates (simplified: delete all and recreate)
@@ -230,6 +233,15 @@ export default function ElevatorDetail() {
                     type="text"
                     value={editMachineRoom}
                     onChange={(e) => setEditMachineRoom(e.target.value)}
+                    className="w-full px-3 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[#694e35] font-medium mb-1 text-sm">Número de patente</label>
+                  <input
+                    type="text"
+                    value={editPlateNumber}
+                    onChange={(e) => setEditPlateNumber(e.target.value)}
                     className="w-full px-3 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
                   />
                 </div>
@@ -374,6 +386,12 @@ export default function ElevatorDetail() {
                     <span className="font-bold text-[#694e35]">Dos puertas:</span>
                     <span className="font-normal text-[#694e35]">{elevator.hasTwoDoors ? 'Sí' : 'No'}</span>
                   </div>
+                  {elevator.plateNumber && (
+                    <div className="inline-flex items-baseline gap-1">
+                      <span className="font-bold text-[#694e35]">Número de patente:</span>
+                      <span className="font-normal text-[#694e35]">{elevator.plateNumber}</span>
+                    </div>
+                  )}
                 </div>
               </div>
               {/* Service History - only show in read mode */}

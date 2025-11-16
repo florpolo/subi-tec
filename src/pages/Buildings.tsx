@@ -320,6 +320,7 @@ export default function Buildings() {
                               <div>Paradas: {elevator.stops}</div>
                               <div>Capacidad: {elevator.capacity}kg</div>
                               <div>Control: {elevator.controlType}</div>
+                              {elevator.plateNumber && <div>Número de patente: {elevator.plateNumber}</div>}
                             </div>
                           </Link>
                         ))}

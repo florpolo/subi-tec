@@ -47,6 +47,7 @@ export default function WorkOrderForm() {
 
   const [newElevatorNumber, setNewElevatorNumber] = useState<number>(1);
   const [newElevatorLocation, setNewElevatorLocation] = useState('');
+  const [newElevatorPlateNumber, setNewElevatorPlateNumber] = useState('');
 
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [elevators, setElevators] = useState<Elevator[]>([]);
@@ -201,6 +202,7 @@ export default function WorkOrderForm() {
         capacity: 450,
         machineRoomLocation: 'Azotea',
         controlType: 'Automático',
+        plateNumber: newElevatorPlateNumber,
       });
       if (newElevator) {
         setElevatorId(newElevator.id);
@@ -209,6 +211,7 @@ export default function WorkOrderForm() {
       setShowNewElevatorForm(false);
       setNewElevatorNumber(1);
       setNewElevatorLocation('');
+      setNewElevatorPlateNumber('');
     } else {
       if (!newEquipmentLocation) {
         alert('La ubicación es obligatoria');
