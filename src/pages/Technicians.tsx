@@ -71,7 +71,7 @@ const getTodayCounters = (allOrders: WorkOrder[], technicianId: string): DailyCo
     total: todayPending.length,       // "Total del día" = HOY del técnico
     pending: pending.length,          // "Por hacer"
     inProgress: inProgress.length,    // "En curso"
-    completed: completed.length,      // "Completadas del día" (en la vista del técnico)
+    completed: completed.length,      // "Completadas del día"
   };
 };
 
@@ -282,7 +282,7 @@ export default function Technicians() {
                     <>
                       {/* Daily Counters */}
                       <div className="bg-white p-3 rounded-lg border-2 border-[#d4caaf]">
-                        <h4 className="text-xs font-bold text-[#5e4c1e] mb-2">CONTADORES DEL DÍA</h4>
+                        <h4 className="text-xs font-bold text-[#5e4c1e] mb-2">TAREAS</h4>
                         <div className="grid grid-cols-2 gap-2 text-center">
                           <div>
                             <p className="text-xs text-[#5e4c1e]">Total del día</p>
