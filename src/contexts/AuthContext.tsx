@@ -85,47 +85,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loadCompanyMemberships = async (userId: string) => {
-    const { data: engineerData } = await supabase
-      .from('engineers')
-      .select('id')
-      .eq('user_id', userId)
-      .maybeSingle();
+    try {
+      const { data: engineerData, error: engineerError } = await supabase
+        .from('engineers')
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle();
 
-    if (engineerData) {
-      setEngineerId(engineerData.id);
-      setActiveCompanyRole('engineer');
-      setCompanyMemberships([]);
-
-      const { data: membershipData } = await supabase
-        .from('engineer_company_memberships')
-        .select(`
-          id,
-          engineer_id,
-          company_id,
-          company:companies(id, name)
-        `)
-        .eq('engineer_id', engineerData.id);
-
-      if (membershipData && membershipData.length > 0) {
-        setEngineerMemberships(membershipData as EngineerMembership[]);
-
-        const storedCompanyId = localStorage.getItem('activeCompanyId');
-        const validStoredCompany = membershipData.find(m => m.company_id === storedCompanyId);
-
-        if (validStoredCompany) {
-          setActiveCompanyId(validStoredCompany.company_id);
-          setCurrentCompanyId(validStoredCompany.company_id);
-        } else {
-          setActiveCompanyId(membershipData[0].company_id);
-          localStorage.setItem('activeCompanyId', membershipData[0].company_id);
-          setCurrentCompanyId(membershipData[0].company_id);
-        }
-      } else {
-        setEngineerMemberships([]);
-        setActiveCompanyId(null);
-        setCurrentCompanyId(null);
+      if (engineerError) {
+        console.error('Error loading engineer data:', engineerError);
+        return;
       }
-      return;
+
+      if (engineerData) {
+        setEngineerId(engineerData.id);
+        setActiveCompanyRole('engineer');
+        setCompanyMemberships([]);
+
+        const { data: membershipData, error: membershipError } = await supabase
+          .from('engineer_company_memberships')
+          .select(`
+            id,
+            engineer_id,
+            company_id,
+            company:companies(id, name)
+          `)
+          .eq('engineer_id', engineerData.id);
+
+        if (membershipError) {
+          console.error('Error loading engineer memberships:', membershipError);
+          setEngineerMemberships([]);
+          setActiveCompanyId(null);
+          setCurrentCompanyId(null);
+          return;
+        }
+
+        if (membershipData && membershipData.length > 0) {
+          setEngineerMemberships(membershipData as EngineerMembership[]);
+
+          const storedCompanyId = localStorage.getItem('activeCompanyId');
+          const validStoredCompany = membershipData.find(m => m.company_id === storedCompanyId);
+
+          if (validStoredCompany) {
+            setActiveCompanyId(validStoredCompany.company_id);
+            setCurrentCompanyId(validStoredCompany.company_id);
+          } else {
+            setActiveCompanyId(membershipData[0].company_id);
+            localStorage.setItem('activeCompanyId', membershipData[0].company_id);
+            setCurrentCompanyId(membershipData[0].company_id);
+          }
+        } else {
+          setEngineerMemberships([]);
+          setActiveCompanyId(null);
+          setCurrentCompanyId(null);
+        }
+        return;
+      }
+    } catch (err) {
+      console.error('Unexpected error in loadCompanyMemberships:', err);
     }
 
     const { data, error } = await supabase
