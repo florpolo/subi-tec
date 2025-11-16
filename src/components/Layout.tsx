@@ -14,29 +14,36 @@ import { useAuth } from '../contexts/AuthContext';
 
 interface LayoutProps {
   children: ReactNode;
-  viewMode?: 'office' | 'technician';
+  viewMode?: 'office' | 'technician' | 'engineer';
 }
 
 export default function Layout({ children, viewMode = 'office' }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [companyMenuOpen, setCompanyMenuOpen] = useState(false);
   const location = useLocation();
-  const { activeCompanyId, companyMemberships, setActiveCompany, signOut } = useAuth();
+  const { activeCompanyId, companyMemberships, engineerMemberships, setActiveCompany, signOut } = useAuth();
 
   const officeLinks = [
     { to: '/orders', icon: FileText, label: 'Órdenes' },
     { to: '/buildings', icon: Building2, label: 'Edificios' },
     { to: '/technicians', icon: Users, label: 'Técnicos' },
+    { to: '/engineers', icon: Users, label: 'Ingenieros' },
   ];
   const technicianLinks = [{ to: '/my-tasks', icon: ClipboardList, label: 'Mis Tareas' }];
-  const links = viewMode === 'office' ? officeLinks : technicianLinks;
+  const engineerLinks = [
+    { to: '/engineer-dashboard', icon: Building2, label: 'Mis Compañías' },
+    { to: '/engineer-reports', icon: FileText, label: 'Reportes' },
+  ];
+  const links = viewMode === 'office' ? officeLinks : viewMode === 'technician' ? technicianLinks : engineerLinks;
 
   const isActive = (path: string) => {
     if (path === '/orders' && location.pathname === '/') return true;
     return location.pathname.startsWith(path);
   };
 
-  const activeCompany = companyMemberships.find((m) => m.company_id === activeCompanyId);
+  const activeCompany = viewMode === 'engineer'
+    ? engineerMemberships.find((m) => m.company_id === activeCompanyId)
+    : companyMemberships.find((m) => m.company_id === activeCompanyId);
   const companyName = activeCompany?.company?.name || 'No Company';
 
   const handleSignOut = async () => {
@@ -55,7 +62,7 @@ export default function Layout({ children, viewMode = 'office' }: LayoutProps) {
             >
               {sidebarOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
-            <Link to={viewMode === 'office' ? '/orders' : '/my-tasks'} className="flex items-center gap-3">
+            <Link to={viewMode === 'office' ? '/orders' : viewMode === 'technician' ? '/my-tasks' : '/engineer-dashboard'} className="flex items-center gap-3">
               {/* logo */}
               <img src="/SUBITEC-LOGO-02 (1).svg" alt="Subitec Logo" className="h-14 w-auto" />
             </Link>
@@ -64,7 +71,7 @@ export default function Layout({ children, viewMode = 'office' }: LayoutProps) {
           <div className="flex items-center gap-3">
             <div className="font-bold text-lg hidden sm:block">{companyName}</div>
 
-            {companyMemberships.length > 1 && (
+            {((viewMode === 'engineer' && engineerMemberships.length > 1) || (viewMode !== 'engineer' && companyMemberships.length > 1)) && (
               <div className="relative hidden sm:block">
                 <button
                   onClick={() => setCompanyMenuOpen(!companyMenuOpen)}
@@ -76,21 +83,36 @@ export default function Layout({ children, viewMode = 'office' }: LayoutProps) {
                 {companyMenuOpen && (
                   <div className="absolute right-0 mt-2 w-64 bg-white rounded-lg shadow-xl border-2 border-gray-300 z-50">
                     <div className="py-2">
-                      {companyMemberships.map((membership) => (
-                        <button
-                          key={membership.company_id}
-                          onClick={() => {
-                            setActiveCompany(membership.company_id);
-                            setCompanyMenuOpen(false);
-                          }}
-                          className={`w-full text-left px-4 py-2 hover:bg-gray-100 transition-colors ${
-                            membership.company_id === activeCompanyId ? 'bg-yellow-100' : ''
-                          }`}
-                        >
-                          <div className="font-medium text-[#520f0f]">{membership.company?.name}</div>
-                          <div className="text-xs text-gray-600 capitalize">{membership.role}</div>
-                        </button>
-                      ))}
+                      {viewMode === 'engineer'
+                        ? engineerMemberships.map((membership) => (
+                            <button
+                              key={membership.company_id}
+                              onClick={() => {
+                                setActiveCompany(membership.company_id);
+                                setCompanyMenuOpen(false);
+                              }}
+                              className={`w-full text-left px-4 py-2 hover:bg-gray-100 transition-colors ${
+                                membership.company_id === activeCompanyId ? 'bg-yellow-100' : ''
+                              }`}
+                            >
+                              <div className="font-medium text-[#520f0f]">{membership.company?.name}</div>
+                            </button>
+                          ))
+                        : companyMemberships.map((membership) => (
+                            <button
+                              key={membership.company_id}
+                              onClick={() => {
+                                setActiveCompany(membership.company_id);
+                                setCompanyMenuOpen(false);
+                              }}
+                              className={`w-full text-left px-4 py-2 hover:bg-gray-100 transition-colors ${
+                                membership.company_id === activeCompanyId ? 'bg-yellow-100' : ''
+                              }`}
+                            >
+                              <div className="font-medium text-[#520f0f]">{membership.company?.name}</div>
+                              <div className="text-xs text-gray-600 capitalize">{membership.role}</div>
+                            </button>
+                          ))}
                     </div>
                   </div>
                 )}

@@ -1,14 +1,79 @@
+// src/pages/Technicians.tsx
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { dataLayer, Technician, WorkOrder } from '../lib/dataLayer';
 import { Users, Circle, Plus, Edit } from 'lucide-react';
+import usePreserveScroll from '../hooks/usePreserveScroll';
 
 interface DailyCounters {
-  total: number;
-  pending: number;
-  inProgress: number;
-  completed: number;
+  total: number;      // HOY (igual que "today" en MyTasks)
+  pending: number;    // Por hacer (sin fecha + vencidas)
+  inProgress: number; // En curso
+  completed: number;  // Completadas HOY
 }
+
+// ==== helpers de fecha en BA, igual concepto que en MyTasks.tsx ====
+const TZ_BA = 'America/Argentina/Buenos_Aires';
+
+const baDayKey = (d: Date) =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: TZ_BA,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(d);
+
+const isTodayBA = (iso?: string | null) => {
+  if (!iso) return false;
+  const k = baDayKey(new Date(iso));
+  const todayK = baDayKey(new Date());
+  return k === todayK;
+};
+
+const isBeforeTodayBA = (iso?: string | null) => {
+  if (!iso) return false;
+  const k = baDayKey(new Date(iso));
+  const todayK = baDayKey(new Date());
+  return k < todayK;
+};
+
+// ==== misma lógica de contadores que en MyTasks, pero por técnico ====
+const getTodayCounters = (allOrders: WorkOrder[], technicianId: string): DailyCounters => {
+  const techOrders = allOrders.filter(o => o.technicianId === technicianId);
+
+  // HOY: Pending con fecha programada = hoy
+  const todayPending = techOrders.filter((o: any) => {
+    if (o.status !== 'Pending') return false;
+    const dt = o.date_time || o.dateTime || null;
+    return isTodayBA(dt);
+  });
+
+  // Por hacer:
+  // - Pending sin fecha
+  // - Pending con fecha ANTES de hoy
+  const pending = techOrders.filter((o: any) => {
+    if (o.status !== 'Pending') return false;
+    const dt = o.date_time || o.dateTime || null;
+    return !dt || isBeforeTodayBA(dt);
+  });
+
+  // En curso: todas las In Progress (sin limitar a hoy)
+  const inProgress = techOrders.filter(o => o.status === 'In Progress');
+
+  // Completadas: Completed finalizadas HOY
+  const completed = techOrders.filter((o: any) => {
+    if (o.status !== 'Completed') return false;
+    const fin = o.finish_time || o.finishTime || o.completion_time || null;
+    return isTodayBA(fin);
+  });
+
+  return {
+    total: todayPending.length,       // "Total del día" = HOY del técnico
+    pending: pending.length,          // "Por hacer"
+    inProgress: inProgress.length,    // "En curso"
+    completed: completed.length,      // "Completadas del día"
+  };
+};
 
 export default function Technicians() {
   const [technicians, setTechnicians] = useState<Technician[]>([]);
@@ -23,51 +88,7 @@ export default function Technicians() {
   const [editSpecialty, setEditSpecialty] = useState('');
   const [editContact, setEditContact] = useState('');
 
-  const getTodayCounters = async (technicianId: string): Promise<DailyCounters> => {
-    const allOrders = await dataLayer.listWorkOrders();
-
-    // Helper: Check if a date is today in Buenos Aires
-    const isTodayBA = (isoString: string | null | undefined) => {
-      if (!isoString) return false;
-      const date = new Date(isoString);
-      const baString = date.toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' });
-      const baDate = new Date(baString);
-      baDate.setHours(0, 0, 0, 0);
-      const now = new Date();
-      const nowBA = new Date(now.toLocaleString('en-US', { timeZone: 'America/Argentina/Buenos_Aires' }));
-      nowBA.setHours(0, 0, 0, 0);
-      return baDate.getTime() === nowBA.getTime();
-    };
-
-    const techOrders = allOrders.filter(order => order.technicianId === technicianId);
-
-    // POR HACER: scheduled for today or no date
-    const pending = techOrders.filter((o: any) => {
-      if (o.status !== 'Pending') return false;
-      const dateTime = o.dateTime || o.date_time;
-      if (!dateTime) return true;
-      return isTodayBA(dateTime);
-    });
-
-    // EN CURSO: In Progress started today
-    const inProgress = techOrders.filter((o: any) => {
-      if (o.status !== 'In Progress') return false;
-      return isTodayBA(o.start_time || o.startTime);
-    });
-
-    // COMPLETADAS: Completed finished today
-    const completed = techOrders.filter((o: any) => {
-      if (o.status !== 'Completed') return false;
-      return isTodayBA(o.finish_time || o.completion_time);
-    });
-
-    return {
-      total: pending.length + inProgress.length + completed.length,
-      pending: pending.length,
-      inProgress: inProgress.length,
-      completed: completed.length,
-    };
-  };
+  usePreserveScroll('techniciansListScroll', [technicians]);
 
   const loadData = async () => {
     const techs = await dataLayer.listTechnicians();
@@ -81,9 +102,13 @@ export default function Technicians() {
 
     for (const tech of techs) {
       // 🔴 busy si tiene ≥1 In Progress, 🟢 free en cualquier otro caso
-      const hasInProgress = allOrders.some(o => o.technicianId === tech.id && o.status === 'In Progress');
+      const hasInProgress = allOrders.some(
+        o => o.technicianId === tech.id && o.status === 'In Progress'
+      );
       statuses[tech.id] = hasInProgress ? 'busy' : 'free';
-      counters[tech.id] = await getTodayCounters(tech.id);
+
+      // Contadores alineados con MyTasks.tsx
+      counters[tech.id] = getTodayCounters(allOrders, tech.id);
     }
 
     setTechnicianStatuses(statuses);
@@ -179,7 +204,9 @@ export default function Technicians() {
                     </div>
                     <div className="flex-1">
                       <Link to={`/technicians/${technician.id}`}>
-                        <h3 className="text-xl font-bold text-[#694e35] hover:text-[#fcca53] transition-colors">{technician.name}</h3>
+                        <h3 className="text-xl font-bold text-[#694e35] hover:text-[#fcca53] transition-colors">
+                          {technician.name}
+                        </h3>
                       </Link>
                       <div className="flex items-center gap-2 mt-1">
                         <Circle
@@ -255,23 +282,31 @@ export default function Technicians() {
                     <>
                       {/* Daily Counters */}
                       <div className="bg-white p-3 rounded-lg border-2 border-[#d4caaf]">
-                        <h4 className="text-xs font-bold text-[#5e4c1e] mb-2">CONTADORES DEL DÍA</h4>
+                        <h4 className="text-xs font-bold text-[#5e4c1e] mb-2">TAREAS</h4>
                         <div className="grid grid-cols-2 gap-2 text-center">
                           <div>
                             <p className="text-xs text-[#5e4c1e]">Total del día</p>
-                            <p className="text-lg font-bold text-[#694e35]">{dailyCounters[technician.id]?.total || 0}</p>
+                            <p className="text-lg font-bold text-[#694e35]">
+                              {dailyCounters[technician.id]?.total || 0}
+                            </p>
                           </div>
                           <div>
                             <p className="text-xs text-[#5e4c1e]">Por hacer</p>
-                            <p className="text-lg font-bold text-yellow-600">{dailyCounters[technician.id]?.pending || 0}</p>
+                            <p className="text-lg font-bold text-yellow-600">
+                              {dailyCounters[technician.id]?.pending || 0}
+                            </p>
                           </div>
                           <div>
                             <p className="text-xs text-[#5e4c1e]">En curso</p>
-                            <p className="text-lg font-bold text-blue-600">{dailyCounters[technician.id]?.inProgress || 0}</p>
+                            <p className="text-lg font-bold text-blue-600">
+                              {dailyCounters[technician.id]?.inProgress || 0}
+                            </p>
                           </div>
                           <div>
                             <p className="text-xs text-[#5e4c1e]">Completadas</p>
-                            <p className="text-lg font-bold text-green-600">{dailyCounters[technician.id]?.completed || 0}</p>
+                            <p className="text-lg font-bold text-green-600">
+                              {dailyCounters[technician.id]?.completed || 0}
+                            </p>
                           </div>
                         </div>
                       </div>
@@ -279,7 +314,11 @@ export default function Technicians() {
                       <div>
                         <span className="text-sm text-[#5e4c1e]">Rol</span>
                         <div className="mt-1">
-                          <span className={`px-3 py-1 rounded-full text-sm font-bold ${getRoleBadgeColor(technician.role)}`}>
+                          <span
+                            className={`px-3 py-1 rounded-full text-sm font-bold ${getRoleBadgeColor(
+                              technician.role
+                            )}`}
+                          >
                             {technician.role}
                           </span>
                         </div>

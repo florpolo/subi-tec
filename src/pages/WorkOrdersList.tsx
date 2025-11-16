@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { dataLayer, WorkOrder, Building, Elevator, Technician } from '../lib/dataLayer';
 import { Search, Filter, FileText, Clock, AlertCircle, PlayCircle, CheckCircle } from 'lucide-react';
+import usePreserveScroll from '../hooks/usePreserveScroll';
 
 // --- Zona horaria Buenos Aires ---
 const TZ_BA = 'America/Argentina/Buenos_Aires';
@@ -73,21 +74,50 @@ const getClaimTypeLabel = (claimType: string) =>
 const baseVisibility = (list: WorkOrder[]) => list;
 
 export default function WorkOrdersList() {
+  usePreserveScroll('workOrdersListScroll');
+
+  useEffect(() => {
+    if ('scrollRestoration' in history) {
+      history.scrollRestoration = 'manual';
+    }
+    return () => {
+      if ('scrollRestoration' in history) {
+        history.scrollRestoration = 'auto';
+      }
+    };
+  }, []);
+
   const [ordersRaw, setOrdersRaw] = useState<WorkOrder[]>([]);
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [elevators, setElevators] = useState<Elevator[]>([]);
   const [technicians, setTechnicians] = useState<Technician[]>([]);
 
   // Filtros UI
-  // 'today' = "Total" (muestra visibilidad base sin filtro de estado)
-  const [activeKpiFilter, setActiveKpiFilter] = useState<string>('today');
-  const [priorityFilter, setPriorityFilter] = useState<string>('');
-  const [technicianFilter, setTechnicianFilter] = useState<string>('');
-  const [searchTerm, setSearchTerm] = useState<string>('');
-  const [dateFilter, setDateFilter] = useState<string>(''); // 'YYYY-MM-DD'
+  const [activeKpiFilter, setActiveKpiFilter] = useState<string>(() => sessionStorage.getItem('workOrders_activeKpiFilter') || 'today');
+  const [priorityFilter, setPriorityFilter] = useState<string>(() => sessionStorage.getItem('workOrders_priorityFilter') || '');
+  const [technicianFilter, setTechnicianFilter] = useState<string>(() => sessionStorage.getItem('workOrders_technicianFilter') || '');
+  const [searchTerm, setSearchTerm] = useState<string>(() => sessionStorage.getItem('workOrders_searchTerm') || '');
+  const [dateFilter, setDateFilter] = useState<string>(() => sessionStorage.getItem('workOrders_dateFilter') || '');
 
-  // KPIs (siempre sobre visibilidad base = todas las órdenes)
-  const [kpis, setKpis] = useState({ total: 0, pending: 0, unassigned: 0, inProgress: 0, completed: 0 });
+  // KPIs (sobre visibilidad base = todas las órdenes)
+  // total => "Hoy" (Pending con fecha programada = hoy)
+  // pending => "Por hacer" (Pending sin fecha, con fecha ≠ hoy, o sin técnico)
+  // completed => Completadas hoy
+  const [kpis, setKpis] = useState({
+    total: 0,
+    pending: 0,
+    unassigned: 0,
+    inProgress: 0,
+    completed: 0,
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem('workOrders_activeKpiFilter', activeKpiFilter);
+    sessionStorage.setItem('workOrders_priorityFilter', priorityFilter);
+    sessionStorage.setItem('workOrders_technicianFilter', technicianFilter);
+    sessionStorage.setItem('workOrders_searchTerm', searchTerm);
+    sessionStorage.setItem('workOrders_dateFilter', dateFilter);
+  }, [activeKpiFilter, priorityFilter, technicianFilter, searchTerm, dateFilter]);
 
   const loadData = async () => {
     const allOrders = await dataLayer.listWorkOrders();
@@ -102,14 +132,47 @@ export default function WorkOrdersList() {
     setElevators(elevatorsList);
     setTechnicians(techniciansList);
 
-    // KPIs sobre TODAS las órdenes (sin limpieza por día)
+    // KPIs con la lógica nueva
     const base = baseVisibility(allOrders);
+    const todayKey = baDayKey(new Date());
+
+    // "Hoy": Pending con fecha programada = hoy (BA)
+    const pendingToday = base.filter((o: any) => {
+      if (o.status !== 'Pending') return false;
+      const when = getRelevantInstant(o);
+      if (!when) return false;
+      return baDayKey(when) === todayKey;
+    });
+
+    // "Por hacer":
+    // - Pending sin fecha programada
+    // - Pending con fecha programada ≠ hoy
+    // - Pending sin técnico asignado
+    const toDo = base.filter((o: any) => {
+      if (o.status !== 'Pending') return false;
+      const when = getRelevantInstant(o); // programada para Pending
+      const noDateOrDifferentDay = !when || baDayKey(when) !== todayKey;
+      const noTechnician = !o.technicianId;
+      return noDateOrDifferentDay || noTechnician;
+    });
+
+    const unassigned = base.filter(o => o.status === 'Pending' && !o.technicianId);
+    const inProgress = base.filter(o => o.status === 'In Progress');
+
+    // "Completadas": Completed cuya fecha de finalización = hoy (BA)
+    const completedToday = base.filter((o: any) => {
+      if (o.status !== 'Completed') return false;
+      const when = getRelevantInstant(o); // finalización para Completed
+      if (!when) return false;
+      return baDayKey(when) === todayKey;
+    });
+
     setKpis({
-      total: base.length,
-      pending: base.filter(o => o.status === 'Pending').length,
-      unassigned: base.filter(o => o.status === 'Pending' && !o.technicianId).length,
-      inProgress: base.filter(o => o.status === 'In Progress').length,
-      completed: base.filter(o => o.status === 'Completed').length,
+      total: pendingToday.length,
+      pending: toDo.length,
+      unassigned: unassigned.length,
+      inProgress: inProgress.length,
+      completed: completedToday.length,
     });
   };
 
@@ -120,61 +183,89 @@ export default function WorkOrdersList() {
   }, []);
 
   // --------- PIPELINE DE VISUALIZACIÓN ---------
-  // Ahora la base es SIEMPRE todas las órdenes.
-  let visible: WorkOrder[] = baseVisibility(ordersRaw);
+  const visible = useMemo(() => {
+    let filtered: WorkOrder[] = baseVisibility(ordersRaw);
+    const todayKey = baDayKey(new Date());
 
-  // KPI (estado) como filtro de la lista
-  if (activeKpiFilter === 'Pending') {
-    visible = visible.filter(o => o.status === 'Pending');
-  } else if (activeKpiFilter === 'In Progress') {
-    visible = visible.filter(o => o.status === 'In Progress');
-  } else if (activeKpiFilter === 'Completed') {
-    visible = visible.filter(o => o.status === 'Completed');
-  } else if (activeKpiFilter === 'unassigned') {
-    visible = visible.filter(o => o.status === 'Pending' && !o.technicianId);
-  } // 'today' => sin filtro extra
+    // KPI (estado) como filtro de la lista, según la lógica nueva
+    if (activeKpiFilter === 'today') {
+      // "Hoy": Pending con fecha programada = hoy
+      filtered = filtered.filter((o: any) => {
+        if (o.status !== 'Pending') return false;
+        const when = getRelevantInstant(o);
+        if (!when) return false;
+        return baDayKey(when) === todayKey;
+      });
+    } else if (activeKpiFilter === 'Pending') {
+      // "Por hacer": Pending sin fecha, con fecha ≠ hoy o sin técnico
+      filtered = filtered.filter((o: any) => {
+        if (o.status !== 'Pending') return false;
+        const when = getRelevantInstant(o);
+        const noDateOrDifferentDay = !when || baDayKey(when) !== todayKey;
+        const noTechnician = !o.technicianId;
+        return noDateOrDifferentDay || noTechnician;
+      });
+    } else if (activeKpiFilter === 'In Progress') {
+      filtered = filtered.filter(o => o.status === 'In Progress');
+    } else if (activeKpiFilter === 'Completed') {
+      // Completadas hoy
+      filtered = filtered.filter((o: any) => {
+        if (o.status !== 'Completed') return false;
+        const when = getRelevantInstant(o);
+        if (!when) return false;
+        return baDayKey(when) === todayKey;
+      });
+    } else if (activeKpiFilter === 'CompletedAll') {
+      // Nueva "pestaña": todas las completadas (sin importar fecha)
+      filtered = filtered.filter(o => o.status === 'Completed');
+    } else if (activeKpiFilter === 'unassigned') {
+      filtered = filtered.filter(o => o.status === 'Pending' && !o.technicianId);
+    }
 
-  // Prioridad / Técnico
-  if (priorityFilter) {
-    visible = visible.filter(o => o.priority === priorityFilter);
-  }
-  if (technicianFilter) {
-    visible = visible.filter(o => o.technicianId === technicianFilter);
-  }
+    // Prioridad / Técnico
+    if (priorityFilter) {
+      filtered = filtered.filter(o => o.priority === priorityFilter);
+    }
+    if (technicianFilter) {
+      filtered = filtered.filter(o => o.technicianId === technicianFilter);
+    }
 
-  // Filtro por FECHA (día BA, programada vs finalizada)
-  if (dateFilter) {
-    visible = visible.filter((o: any) => {
-      const when = getRelevantInstant(o);
-      if (!when) return false; // sin fecha relevante no entra al día filtrado
-      return baDayKey(when) === dateFilter;
+    // Filtro por FECHA (día BA, programada vs finalizada)
+    if (dateFilter) {
+      filtered = filtered.filter((o: any) => {
+        const when = getRelevantInstant(o);
+        if (!when) return false; // sin fecha relevante no entra al día filtrado
+        return baDayKey(when) === dateFilter;
+      });
+    }
+
+    // Búsqueda (solo dirección y barrio del edificio; insensible a acentos)
+    if (searchTerm) {
+      const q = normalize(searchTerm);
+
+      // mapa para acceso rápido al edificio por id
+      const bById = new Map(buildings.map(b => [b.id, b]));
+
+      filtered = filtered.filter((o) => {
+        const b = bById.get(o.buildingId);
+        return (
+          normalize(b?.address).includes(q) ||       // dirección (calle)
+          normalize(b?.neighborhood).includes(q)     // barrio
+        );
+      });
+    }
+
+    // Ordenar (prioridad > creación)
+    return filtered.sort((a, b) => {
+      const weights: Record<string, number> = { High: 3, Medium: 2, Low: 1 };
+      const aw = weights[a.priority] ?? 0;
+      const bw = weights[b.priority] ?? 0;
+      if (aw !== bw) return bw - aw;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
-  }
-
-  // Búsqueda (solo dirección y barrio del edificio; insensible a acentos)
-  if (searchTerm) {
-    const q = normalize(searchTerm);
-
-    // mapa para acceso rápido al edificio por id
-    const bById = new Map(buildings.map(b => [b.id, b]));
-
-    visible = visible.filter((o) => {
-      const b = bById.get(o.buildingId);
-      return (
-        normalize(b?.address).includes(q) ||       // dirección (calle)
-        normalize(b?.neighborhood).includes(q)     // barrio
-      );
-    });
-  }
-
-  // Ordenar (prioridad > creación)
-  visible = visible.sort((a, b) => {
-    const weights: Record<string, number> = { High: 3, Medium: 2, Low: 1 };
-    const aw = weights[a.priority] ?? 0;
-    const bw = weights[b.priority] ?? 0;
-    if (aw !== bw) return bw - aw;
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-  });
+  }, [ordersRaw, activeKpiFilter, priorityFilter, technicianFilter, dateFilter, searchTerm, buildings]);
+  
+  usePreserveScroll('workOrdersListScroll', [visible]);
 
   const getBuildingName = (buildingId: string) => {
     const building = buildings.find(b => b.id === buildingId);
@@ -196,11 +287,16 @@ export default function WorkOrdersList() {
 
   // KPIs (números fijos sobre base; al click filtran la lista)
   const kpiCards = [
-    { label: 'Total', value: kpis.total, icon: FileText, filter: 'today' },
+    // "Hoy": Pending con fecha programada = hoy
+    { label: 'Hoy', value: kpis.total, icon: FileText, filter: 'today' },
+    // "Por hacer" con la lógica nueva
     { label: 'Por hacer', value: kpis.pending, icon: Clock, filter: 'Pending' },
     { label: 'Por asignar', value: kpis.unassigned, icon: AlertCircle, filter: 'unassigned' },
     { label: 'En curso', value: kpis.inProgress, icon: PlayCircle, filter: 'In Progress' },
-    { label: 'Completadas', value: kpis.completed, icon: CheckCircle, filter: 'Completed' },
+    // Completadas hoy (cambio de texto acá)
+    { label: 'Completadas del día', value: kpis.completed, icon: CheckCircle, filter: 'Completed' },
+    // "Pestaña" nueva: todas las completadas (hoy + anteriores)
+    { label: 'Todas las completadas', value: ordersRaw.filter(o => o.status === 'Completed').length, icon: CheckCircle, filter: 'CompletedAll' },
   ];
 
   const handleKpiClick = (filter: string) => {
@@ -224,7 +320,7 @@ export default function WorkOrdersList() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
         {kpiCards.map((kpi) => {
           const Icon = kpi.icon;
           const isActive = activeKpiFilter === kpi.filter;
@@ -304,7 +400,7 @@ export default function WorkOrdersList() {
           {visible.map((order) => (
             <div key={order.id} className="bg-white rounded-xl shadow border-2 border-gray-300 p-6 hover:shadow-md transition-shadow">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex-1 space-y-3">
+                <div className="flex-1 space-y-2">
                   <div className="flex flex-wrap items-center gap-3">
                     <span className={`px-3 py-1 text-sm font-bold border-2 ${getPriorityColor(order.priority)} rounded`}>
                       {getPriorityLabel(order.priority)}
@@ -313,23 +409,9 @@ export default function WorkOrdersList() {
                       Estado: {getStatusLabel(order.status)}
                     </span>
                   </div>
-                  <p className="text-[#694e35] font-bold text-lg">{getClaimTypeLabel(order.claimType)}</p>
-                  <p className="text-[#5e4c1e]">{order.description}</p>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-[#520f0f]">
-                    <span>Edificio: {getBuildingName(order.buildingId)}</span>
-                    <span>Ascensor: {getElevatorInfo(order.elevatorId)}</span>
-                    <span>Técnico: {getTechnicianName(order.technicianId)}</span>
-                    {(order as any).dateTime || (order as any).date_time ? (
-                      <span className="font-medium">
-                        Programada: {formatBA(((order as any).dateTime ?? (order as any).date_time) as string)}
-                      </span>
-                    ) : null}
-                    {(order as any).finishTime || (order as any).finish_time ? (
-                      <span className="font-medium">
-                        · Finalizada: {formatBA(((order as any).finishTime ?? (order as any).finish_time) as string)}
-                      </span>
-                    ) : null}
-                  </div>
+                  <h3 className="text-[#694e35] font-bold text-xl">{getBuildingName(order.buildingId)}</h3>
+                  <p className="text-[#5e4c1e] text-sm">{order.description}</p>
+                  <p className="text-[#5e4c1e] text-sm">Técnico: {getTechnicianName(order.technicianId)}</p>
                 </div>
                 <div className="flex gap-2">
                   <Link
