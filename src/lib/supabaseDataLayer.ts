@@ -100,25 +100,6 @@ export interface Equipment {
   created_at?: string;
 }
 
-export interface Engineer {
-  id: string;
-  company_id: string;
-  user_id?: string | null;
-  name: string;
-  contact: string | null;
-  created_at?: string;
-}
-
-export interface EngineerReport {
-  id: string;
-  company_id: string;
-  engineer_id: string;
-  address: string;
-  comments: string | null;
-  is_read: boolean;
-  created_at: string;
-}
-
 /** ====== Utilidades ====== */
 const toNull = (v: any) => {
   if (v === undefined || v === null) return null;
@@ -523,127 +504,6 @@ async updateWorkOrder(id: string, updates: Partial<WorkOrder>, companyId: string
     const { error } = await supabase.from<Equipment>('equipments').delete().eq('company_id', companyId).eq('id', id);
     if (error) throw error;
   },
-
-  /* ========== Engineers ========== */
-  async listEngineers(companyId: string): Promise<Engineer[]> {
-    const { data, error } = await supabase
-      .from<Engineer>('engineers')
-      .select('*')
-      .eq('company_id', companyId)
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    return (data || []) as Engineer[];
-  },
-
-  async getEngineer(id: string, companyId: string): Promise<Engineer | null> {
-    const { data, error } = await supabase
-      .from<Engineer>('engineers')
-      .select('*')
-      .eq('company_id', companyId)
-      .eq('id', id)
-      .maybeSingle();
-    if (error) throw error;
-    return data || null;
-  },
-
-  async getEngineerByUserId(userId: string): Promise<Engineer | null> {
-    const { data, error } = await supabase
-      .from<Engineer>('engineers')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
-    if (error) throw error;
-    return data || null;
-  },
-
-  async createEngineer(
-    engineer: Omit<Engineer, 'id' | 'created_at'>,
-    companyId: string
-  ): Promise<Engineer | null> {
-    const payload = { ...engineer, company_id: companyId };
-    const { data, error } = await supabase.from<Engineer>('engineers').insert(payload).select().maybeSingle();
-    if (error) throw error;
-    return data || null;
-  },
-
-  async updateEngineer(
-    id: string,
-    updates: Partial<Engineer>,
-    companyId: string
-  ): Promise<Engineer | null> {
-    const { data, error } = await supabase
-      .from<Engineer>('engineers')
-      .update(updates)
-      .eq('company_id', companyId)
-      .eq('id', id)
-      .select()
-      .maybeSingle();
-    if (error) throw error;
-    return data || null;
-  },
-
-  /* ========== Engineer Reports ========== */
-  async listEngineerReports(companyId: string, engineerId?: string): Promise<EngineerReport[]> {
-    let q = supabase.from<EngineerReport>('engineer_reports').select('*').eq('company_id', companyId);
-    if (engineerId) q = q.eq('engineer_id', engineerId);
-    const { data, error } = await q.order('created_at', { ascending: false });
-    if (error) throw error;
-    return (data || []) as EngineerReport[];
-  },
-
-  async getEngineerReport(id: string, companyId: string): Promise<EngineerReport | null> {
-    const { data, error } = await supabase
-      .from<EngineerReport>('engineer_reports')
-      .select('*')
-      .eq('company_id', companyId)
-      .eq('id', id)
-      .maybeSingle();
-    if (error) throw error;
-    return data || null;
-  },
-
-  async createEngineerReport(
-    report: Omit<EngineerReport, 'id' | 'created_at'>,
-    companyId: string
-  ): Promise<EngineerReport | null> {
-    const payload = { ...report, company_id: companyId };
-    const { data, error } = await supabase.from<EngineerReport>('engineer_reports').insert(payload).select().maybeSingle();
-    if (error) throw error;
-    return data || null;
-  },
-
-  async updateEngineerReport(
-    id: string,
-    updates: Partial<EngineerReport>,
-    companyId: string
-  ): Promise<EngineerReport | null> {
-    const { data, error } = await supabase
-      .from<EngineerReport>('engineer_reports')
-      .update(updates)
-      .eq('company_id', companyId)
-      .eq('id', id)
-      .select()
-      .maybeSingle();
-    if (error) throw error;
-    return data || null;
-  },
-
-  async countUnreadReportsByEngineer(companyId: string): Promise<Record<string, number>> {
-    const { data, error } = await supabase
-      .from<EngineerReport>('engineer_reports')
-      .select('engineer_id')
-      .eq('company_id', companyId)
-      .eq('is_read', false);
-
-    if (error) throw error;
-
-    const acc: Record<string, number> = {};
-    for (const row of (data || [])) {
-      const eid = row.engineer_id as string;
-      acc[eid] = (acc[eid] ?? 0) + 1;
-    }
-    return acc;
-  },
 };
 
 export type {
@@ -654,6 +514,4 @@ export type {
   ElevatorHistory as _ElevatorHistory,
   Equipment as _Equipment,
   EquipmentType as _EquipmentType,
-  Engineer as _Engineer,
-  EngineerReport as _EngineerReport,
 };

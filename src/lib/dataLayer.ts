@@ -8,8 +8,6 @@ import type {
   ElevatorHistory as SupabaseElevatorHistory,
   Equipment as SupabaseEquipment,
   EquipmentType as SupabaseEquipmentType,
-  Engineer as SupabaseEngineer,
-  EngineerReport as SupabaseEngineerReport,
 } from './supabaseDataLayer';
 
 export interface Building {
@@ -99,23 +97,6 @@ export interface Equipment {
   createdAt?: string;
 }
 
-export interface Engineer {
-  id: string;
-  name: string;
-  contact?: string | null;
-  userId?: string | null;
-  createdAt?: string;
-}
-
-export interface EngineerReport {
-  id: string;
-  engineerId: string;
-  address: string;
-  comments?: string | null;
-  isRead: boolean;
-  createdAt: string;
-}
-
 /* ===== Mappers ===== */
 function mapBuilding(b: SupabaseBuilding): Building {
   return {
@@ -203,27 +184,6 @@ function mapEquipment(e: SupabaseEquipment): Equipment {
     capacity: e.capacity,
     status: e.status,
     createdAt: e.created_at,
-  };
-}
-
-function mapEngineer(e: SupabaseEngineer): Engineer {
-  return {
-    id: e.id,
-    name: e.name,
-    contact: e.contact,
-    userId: e.user_id,
-    createdAt: e.created_at,
-  };
-}
-
-function mapEngineerReport(r: SupabaseEngineerReport): EngineerReport {
-  return {
-    id: r.id,
-    engineerId: r.engineer_id,
-    address: r.address,
-    comments: r.comments,
-    isRead: r.is_read,
-    createdAt: r.created_at,
   };
 }
 
@@ -526,80 +486,6 @@ getNextRemitoNo: () => supabaseDataLayer.getNextRemitoNo(companyId),
 
     deleteEquipment: async (id: string): Promise<void> => {
       await supabaseDataLayer.deleteEquipment(id, companyId);
-    },
-
-    /* ===== Engineers ===== */
-    listEngineers: async (): Promise<Engineer[]> => {
-      const engineers = await supabaseDataLayer.listEngineers(companyId);
-      return engineers.map(mapEngineer);
-    },
-
-    getEngineer: async (id: string): Promise<Engineer | null> => {
-      const engineer = await supabaseDataLayer.getEngineer(id, companyId);
-      return engineer ? mapEngineer(engineer) : null;
-    },
-
-    getEngineerByUserId: async (userId: string): Promise<Engineer | null> => {
-      const engineer = await supabaseDataLayer.getEngineerByUserId(userId);
-      return engineer ? mapEngineer(engineer) : null;
-    },
-
-    createEngineer: async (engineer: Omit<Engineer, 'id' | 'createdAt'>): Promise<Engineer | null> => {
-      const result = await supabaseDataLayer.createEngineer(
-        {
-          company_id: companyId,
-          name: engineer.name,
-          contact: engineer.contact ?? null,
-          user_id: engineer.userId ?? null,
-        } as any,
-        companyId
-      );
-      return result ? mapEngineer(result) : null;
-    },
-
-    updateEngineer: async (id: string, updates: Partial<Engineer>): Promise<Engineer | null> => {
-      const result = await supabaseDataLayer.updateEngineer(id, updates as any, companyId);
-      return result ? mapEngineer(result) : null;
-    },
-
-    /* ===== Engineer Reports ===== */
-    listEngineerReports: async (engineerId?: string): Promise<EngineerReport[]> => {
-      const reports = await supabaseDataLayer.listEngineerReports(companyId, engineerId);
-      return reports.map(mapEngineerReport);
-    },
-
-    getEngineerReport: async (id: string): Promise<EngineerReport | null> => {
-      const report = await supabaseDataLayer.getEngineerReport(id, companyId);
-      return report ? mapEngineerReport(report) : null;
-    },
-
-    createEngineerReport: async (report: Omit<EngineerReport, 'id' | 'createdAt'>): Promise<EngineerReport | null> => {
-      const result = await supabaseDataLayer.createEngineerReport(
-        {
-          company_id: companyId,
-          engineer_id: report.engineerId,
-          address: report.address,
-          comments: report.comments ?? null,
-          is_read: report.isRead ?? false,
-        } as any,
-        companyId
-      );
-      return result ? mapEngineerReport(result) : null;
-    },
-
-    updateEngineerReport: async (id: string, updates: Partial<EngineerReport>): Promise<EngineerReport | null> => {
-      const mapped: any = {};
-      if (updates.engineerId !== undefined) mapped.engineer_id = updates.engineerId;
-      if (updates.address !== undefined) mapped.address = updates.address;
-      if (updates.comments !== undefined) mapped.comments = updates.comments;
-      if (updates.isRead !== undefined) mapped.is_read = updates.isRead;
-
-      const result = await supabaseDataLayer.updateEngineerReport(id, mapped, companyId);
-      return result ? mapEngineerReport(result) : null;
-    },
-
-    countUnreadReportsByEngineer: async (): Promise<Record<string, number>> => {
-      return await supabaseDataLayer.countUnreadReportsByEngineer(companyId);
     },
   };
 }

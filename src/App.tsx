@@ -11,16 +11,13 @@ import EquipmentDetail from './pages/EquipmentDetail';
 import Technicians from './pages/Technicians';
 import TechnicianForm from './pages/TechnicianForm';
 import TechnicianDetail from './pages/TechnicianDetail';
-import Engineers from './pages/Engineers';
-import EngineerDetail from './pages/EngineerDetail';
-import EngineerReports from './pages/EngineerReports';
 import MyTasks from './pages/MyTasks';
 import SignIn from './pages/SignIn';
 import SignUp from './pages/SignUp';
 import TaskDetail from './pages/TaskDetail';
 
 
-function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode; requiredRole?: 'office' | 'technician' | 'engineer' }) {
+function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode; requiredRole?: 'office' | 'technician' }) {
   const { user, loading, activeCompanyRole } = useAuth();
 
   if (loading) {
@@ -39,7 +36,7 @@ function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode;
   }
 
   if (requiredRole && activeCompanyRole !== requiredRole) {
-    const defaultRoute = activeCompanyRole === 'technician' ? '/my-tasks' : activeCompanyRole === 'engineer' ? '/engineer-reports' : '/orders';
+    const defaultRoute = activeCompanyRole === 'technician' ? '/my-tasks' : '/orders';
     return <Navigate to={defaultRoute} replace />;
   }
 
@@ -49,7 +46,7 @@ function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode;
 function AppRoutes() {
   const { user, activeCompanyRole } = useAuth();
 
-  const defaultRoute = activeCompanyRole === 'technician' ? '/my-tasks' : activeCompanyRole === 'engineer' ? '/engineer-reports' : '/orders';
+  const defaultRoute = activeCompanyRole === 'technician' ? '/my-tasks' : '/orders';
 
   return (
     <Routes>
@@ -69,9 +66,6 @@ function AppRoutes() {
       <Route path="/technicians" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><Technicians /></Layout></ProtectedRoute>} />
       <Route path="/technicians/new" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><TechnicianForm /></Layout></ProtectedRoute>} />
       <Route path="/technicians/:id" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><TechnicianDetail /></Layout></ProtectedRoute>} />
-      <Route path="/engineers" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><Engineers /></Layout></ProtectedRoute>} />
-      <Route path="/engineers/:id" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><EngineerDetail /></Layout></ProtectedRoute>} />
-      <Route path="/engineer-reports" element={<ProtectedRoute requiredRole="engineer"><Layout viewMode="engineer"><EngineerReports /></Layout></ProtectedRoute>} />
       <Route path="/my-tasks" element={<ProtectedRoute requiredRole="technician"><Layout viewMode="technician"><MyTasks /></Layout></ProtectedRoute>} />
       <Route path="/my-tasks/:id" element={<ProtectedRoute requiredRole="technician"><Layout viewMode="technician"><MyTasks /></Layout></ProtectedRoute>} />
       <Route path="/task/:id" element={<ProtectedRoute requiredRole="technician"><Layout viewMode="technician"><TaskDetail /></Layout></ProtectedRoute>} />
