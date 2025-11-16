@@ -1,7 +1,6 @@
 import { useState, FormEvent, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { dataLayer, Building, Elevator, Equipment, EquipmentType, currentCompanyId } from '../lib/dataLayer';
-import { supabaseDataLayer } from '../lib/supabaseDataLayer';
+import { dataLayer, Building, Elevator, EquipmentType } from '../lib/dataLayer';
 import { ArrowLeft, Plus, Search } from 'lucide-react';
 
 // Normaliza: minúsculas y sin acentos (p.ej. "Córdoba" -> "cordoba")
@@ -16,11 +15,10 @@ export default function WorkOrderForm() {
   const { id } = useParams<{ id: string }>();
   const isEditMode = !!id;
 
-  const [claimType, setClaimType] = useState<'Reclamo' | 'Inspección' | 'Reparación presupuestada' | 'Reparación correctiva'>('Reclamo');
+  const [claimType, setClaimType] = useState<'Semiannual Tests' | 'Monthly Maintenance' | 'Corrective'>('Monthly Maintenance');
   const [correctiveType, setCorrectiveType] = useState<'Minor Repair' | 'Refurbishment' | 'Installation'>('Minor Repair');
   const [buildingId, setBuildingId] = useState<string>('');
   const [elevatorId, setElevatorId] = useState<string>('');
-  const [equipmentId, setEquipmentId] = useState<string>('');
   const [technicianId, setTechnicianId] = useState<string>('');
   const [dateTime, setDateTime] = useState<string>('');
   const [description, setDescription] = useState<string>('');
@@ -50,7 +48,6 @@ export default function WorkOrderForm() {
 
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [elevators, setElevators] = useState<Elevator[]>([]);
-  const [equipments, setEquipments] = useState<Equipment[]>([]);
   const [technicians, setTechnicians] = useState<any[]>([]);
   // ⬇️ Binario: solo 'free' | 'busy'
   const [technicianStatuses, setTechnicianStatuses] = useState<Record<string, 'free' | 'busy'>>({});
@@ -119,8 +116,7 @@ export default function WorkOrderForm() {
           setClaimType(order.claimType);
           if (order.correctiveType) setCorrectiveType(order.correctiveType);
           setBuildingId(order.buildingId);
-          setElevatorId(order.elevatorId || '');
-          setEquipmentId(order.equipmentId || '');
+          setElevatorId(order.elevatorId);
           setTechnicianId(order.technicianId || '');
           // ✅ Prellenar input con hora BA a partir del ISO UTC guardado
           setDateTime(order.dateTime ? isoUtcToBaInput(order.dateTime) : '');
@@ -137,20 +133,15 @@ export default function WorkOrderForm() {
   }, [isEditMode, id]);
 
   useEffect(() => {
-    const loadEquipments = async () => {
+    const loadElevators = async () => {
       if (buildingId) {
-        const [elevatorsList, equipmentsList] = await Promise.all([
-          dataLayer.listElevators(buildingId),
-          dataLayer.listEquipments(buildingId)
-        ]);
+        const elevatorsList = await dataLayer.listElevators(buildingId);
         setElevators(elevatorsList);
-        setEquipments(equipmentsList.filter(e => e.type !== 'elevator'));
       } else {
         setElevators([]);
-        setEquipments([]);
       }
     };
-    loadEquipments();
+    loadElevators();
   }, [buildingId]);
 
   const handleCreateBuilding = async () => {
@@ -210,14 +201,14 @@ export default function WorkOrderForm() {
       setNewElevatorNumber(1);
       setNewElevatorLocation('');
     } else {
-      if (!newEquipmentLocation) {
-        alert('La ubicación es obligatoria');
+      if (!newEquipmentName || !newEquipmentLocation) {
+        alert('El nombre y la ubicación/descripción son obligatorios');
         return;
       }
-      const newEquipment = await dataLayer.createEquipment({
+      await dataLayer.createEquipment({
         buildingId,
         type: equipmentType,
-        name: newEquipmentName.trim() || `${getEquipmentTypeLabel(equipmentType)} ${equipments.length + 1}`,
+        name: newEquipmentName.trim(),
         locationDescription: newEquipmentLocation.trim(),
         brand: newEquipmentBrand.trim() || null,
         model: newEquipmentModel.trim() || null,
@@ -225,11 +216,7 @@ export default function WorkOrderForm() {
         capacity: newEquipmentCapacity.trim() ? parseFloat(newEquipmentCapacity) : null,
         status: 'fit',
       });
-      if (newEquipment) {
-        setEquipments([...equipments, newEquipment]);
-        setEquipmentId(newEquipment.id); // <-- BUGFIX: auto-seleccionar el equipo nuevo
-        alert('Equipo creado exitosamente');
-      }
+      alert('Equipo genérico creado exitosamente (no se asignará a la orden de trabajo)');
       setShowNewElevatorForm(false);
       setNewEquipmentName('');
       setNewEquipmentLocation('');
@@ -240,59 +227,43 @@ export default function WorkOrderForm() {
     }
   };
 
-  const getEquipmentTypeLabel = (type: EquipmentType): string => {
-    const labels: Record<EquipmentType, string> = {
-      elevator: 'Ascensor',
-      water_pump: 'Bomba de agua',
-      freight_elevator: 'Montacarga',
-      car_lift: 'Montacoche',
-      dumbwaiter: 'Montaplatos',
-      camillero: 'Camillero',
-      other: 'Otro',
-    };
-    return labels[type] || type;
-  };
-
-  const toOpt = (v: any) => (v && v !== 'undefined' ? v : undefined);
-
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
 
-    // Validation
-    if (!buildingId) {
-      alert('Por favor, seleccione un edificio.');
+    if (!buildingId || !elevatorId || !description) {
+      alert('Por favor complete todos los campos requeridos');
       return;
     }
-    if (!elevatorId && !equipmentId) {
-      alert('Por favor, seleccione un ascensor o equipo.');
-      return;
-    }
-    if (!description) {
-      alert('Por favor, ingrese una descripción.');
-      return;
-    }
-
-    const workOrderData = {
-      claimType,
-      correctiveType: claimType === 'Corrective' ? correctiveType : undefined,
-      buildingId,
-      elevatorId: toOpt(elevatorId),
-      equipmentId: toOpt(equipmentId),
-      technicianId: toOpt(technicianId),
-      dateTime: dateTime ? baLocalToUtcIso(dateTime) : undefined,
-      description,
-      priority,
-      status: 'Pending' as const,
-      contactName: '',
-      contactPhone: '',
-    };
 
     try {
       if (isEditMode && id) {
-        await dataLayer.updateWorkOrder(id, workOrderData);
+        await dataLayer.updateWorkOrder(id, {
+          claimType,
+          correctiveType: claimType === 'Corrective' ? correctiveType : undefined,
+          buildingId,
+          elevatorId,
+          technicianId: technicianId || undefined,
+          // ✅ Guardar en UTC para que no se corra la hora
+          dateTime: dateTime ? baLocalToUtcIso(dateTime) : undefined,
+          description,
+          priority,
+        });
         navigate(`/orders/${id}`);
       } else {
-        const newOrder = await supabaseDataLayer.createWorkOrder(workOrderData, currentCompanyId);
+        const newOrder = await dataLayer.createWorkOrder({
+          claimType,
+          correctiveType: claimType === 'Corrective' ? correctiveType : undefined,
+          buildingId,
+          elevatorId,
+          technicianId: technicianId || undefined,
+          contactName: '',  // si el esquema lo exige
+          contactPhone: '',
+          // ✅ Guardar en UTC para que no se corra la hora
+          dateTime: dateTime ? baLocalToUtcIso(dateTime) : undefined,
+          description,
+          status: 'Pending',
+          priority,
+        });
         if (newOrder) {
           navigate(`/orders/${newOrder.id}`);
         } else {
@@ -337,17 +308,16 @@ export default function WorkOrderForm() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-[#694e35] font-bold mb-2">
-                Tipo de trabajo <span className="text-red-600">*</span>
+                Tipo de Reclamo <span className="text-red-600">*</span>
               </label>
               <select
                 value={claimType}
                 onChange={(e) => setClaimType(e.target.value as any)}
                 className="w-full px-4 py-3 bg-white border-2 border-[#d4caaf] rounded-lg text-[#694e35] focus:outline-none focus:ring-2 focus:ring-[#fcca53] focus:border-transparent"
               >
-                <option value="Reclamo">Reclamo</option>
-                <option value="Inspección">Inspección</option>
-                <option value="Reparación presupuestada">Reparación presupuestada</option>
-                <option value="Reparación correctiva">Reparación correctiva</option>
+                <option value="Semiannual Tests">Pruebas semestrales</option>
+                <option value="Monthly Maintenance">Mantenimiento mensual</option>
+                <option value="Corrective">Correctivo</option>
               </select>
             </div>
 
@@ -510,43 +480,20 @@ export default function WorkOrderForm() {
               {buildingId && (
                 <div>
                   <label className="block text-[#694e35] font-bold mb-2">
-                    Equipos <span className="text-red-600">*</span>
+                    Ascensor <span className="text-red-600">*</span>
                   </label>
                   <div className="flex gap-2">
                     <select
-                      value={elevatorId || equipmentId}
-                      onChange={(e) => {
-                        const selectedId = e.target.value;
-                        const isElevator = elevators.some(el => el.id === selectedId);
-                        if (isElevator) {
-                          setElevatorId(selectedId);
-                          setEquipmentId('');
-                        } else {
-                          setEquipmentId(selectedId);
-                          setElevatorId('');
-                        }
-                      }}
+                      value={elevatorId}
+                      onChange={(e) => setElevatorId(e.target.value)}
                       className="flex-1 px-4 py-3 bg-white border-2 border-[#d4caaf] rounded-lg text-[#694e35] focus:outline-none focus:ring-2 focus:ring-[#fcca53] focus:border-transparent"
                     >
-                      <option value="">Seleccione un equipo</option>
-                      {elevators.length > 0 && (
-                        <optgroup label="Ascensores">
-                          {elevators.map((elevator) => (
-                            <option key={elevator.id} value={elevator.id}>
-                              Ascensor #{elevator.number} — {elevator.locationDescription}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                      {equipments.length > 0 && (
-                        <optgroup label="Otros equipos">
-                          {equipments.map((equipment) => (
-                            <option key={equipment.id} value={equipment.id}>
-                              {getEquipmentTypeLabel(equipment.type)}: {equipment.name}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
+                      <option value="">Seleccione un ascensor</option>
+                      {elevators.map((elevator) => (
+                        <option key={elevator.id} value={elevator.id}>
+                          {elevator.number} — {elevator.locationDescription}
+                        </option>
+                      ))}
                     </select>
                     <button
                       type="button"
@@ -599,7 +546,7 @@ export default function WorkOrderForm() {
                         <>
                           <input
                             type="text"
-                            placeholder="Nombre (opcional, se genera automáticamente)"
+                            placeholder="Nombre *"
                             value={newEquipmentName}
                             onChange={(e) => setNewEquipmentName(e.target.value)}
                             className="w-full px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
@@ -613,14 +560,28 @@ export default function WorkOrderForm() {
                           />
                           <input
                             type="text"
-                            placeholder="Marca (opcional)"
+                            placeholder="Marca"
                             value={newEquipmentBrand}
                             onChange={(e) => setNewEquipmentBrand(e.target.value)}
                             className="w-full px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
                           />
                           <input
                             type="text"
-                            placeholder="Capacidad (opcional)"
+                            placeholder="Modelo"
+                            value={newEquipmentModel}
+                            onChange={(e) => setNewEquipmentModel(e.target.value)}
+                            className="w-full px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                          />
+                          <input
+                            type="text"
+                            placeholder="N.º de serie"
+                            value={newEquipmentSerial}
+                            onChange={(e) => setNewEquipmentSerial(e.target.value)}
+                            className="w-full px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Capacidad"
                             value={newEquipmentCapacity}
                             onChange={(e) => setNewEquipmentCapacity(e.target.value)}
                             className="w-full px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"

@@ -1,4 +1,3 @@
-
 import { supabaseDataLayer } from './supabaseDataLayer';
 import type {
   Building as SupabaseBuilding,
@@ -8,8 +7,6 @@ import type {
   ElevatorHistory as SupabaseElevatorHistory,
   Equipment as SupabaseEquipment,
   EquipmentType as SupabaseEquipmentType,
-  Engineer as SupabaseEngineer,
-  EngineerReport as SupabaseEngineerReport,
 } from './supabaseDataLayer';
 
 export interface Building {
@@ -45,11 +42,10 @@ export interface Technician {
 
 export interface WorkOrder {
   id: string;
-  claimType: 'Reclamo' | 'Inspección' | 'Reparación presupuestada' | 'Reparación correctiva';
+  claimType: 'Semiannual Tests' | 'Monthly Maintenance' | 'Corrective';
   correctiveType?: 'Minor Repair' | 'Refurbishment' | 'Installation';
   buildingId: string;
-  elevatorId?: string;
-  equipmentId?: string;
+  elevatorId: string;
   technicianId?: string;
   contactName: string;
   contactPhone: string;
@@ -99,23 +95,6 @@ export interface Equipment {
   createdAt?: string;
 }
 
-export interface Engineer {
-  id: string;
-  name: string;
-  contact?: string | null;
-  userId?: string | null;
-  createdAt?: string;
-}
-
-export interface EngineerReport {
-  id: string;
-  engineerId: string;
-  address: string;
-  comments?: string | null;
-  isRead: boolean;
-  createdAt: string;
-}
-
 /* ===== Mappers ===== */
 function mapBuilding(b: SupabaseBuilding): Building {
   return {
@@ -157,11 +136,10 @@ function mapTechnician(t: SupabaseTechnician): Technician {
 function mapWorkOrder(w: SupabaseWorkOrder): WorkOrder {
   return {
     id: w.id,
-    claimType: w.claim_type as 'Reclamo' | 'Inspección' | 'Reparación presupuestada' | 'Reparación correctiva',
+    claimType: w.claim_type as 'Semiannual Tests' | 'Monthly Maintenance' | 'Corrective',
     correctiveType: w.corrective_type as 'Minor Repair' | 'Refurbishment' | 'Installation' | undefined,
     buildingId: w.building_id,
-    elevatorId: w.elevator_id ?? undefined,
-    equipmentId: (w as any).equipment_id ?? undefined,
+    elevatorId: w.elevator_id,
     technicianId: w.technician_id ?? undefined,
     contactName: w.contact_name,
     contactPhone: w.contact_phone,
@@ -203,27 +181,6 @@ function mapEquipment(e: SupabaseEquipment): Equipment {
     capacity: e.capacity,
     status: e.status,
     createdAt: e.created_at,
-  };
-}
-
-function mapEngineer(e: SupabaseEngineer): Engineer {
-  return {
-    id: e.id,
-    name: e.name,
-    contact: e.contact,
-    userId: e.user_id,
-    createdAt: e.created_at,
-  };
-}
-
-function mapEngineerReport(r: SupabaseEngineerReport): EngineerReport {
-  return {
-    id: r.id,
-    engineerId: r.engineer_id,
-    address: r.address,
-    comments: r.comments,
-    isRead: r.is_read,
-    createdAt: r.created_at,
   };
 }
 
@@ -358,16 +315,12 @@ export function createDataLayer(companyId: string) {
       priority?: string;
       technicianId?: string;
       buildingId?: string;
-      elevatorId?: string;
-      equipmentId?: string;
     }): Promise<WorkOrder[]> => {
       const mappedFilters = filters ? {
         status: filters.status,
         priority: filters.priority,
         technician_id: filters.technicianId,
         building_id: filters.buildingId,
-        elevator_id: filters.elevatorId,
-        equipment_id: filters.equipmentId,
       } : undefined;
 
       const orders = await supabaseDataLayer.listWorkOrders(companyId, mappedFilters as any);
@@ -380,55 +333,38 @@ export function createDataLayer(companyId: string) {
     },
 
     createWorkOrder: async (order: Omit<WorkOrder, 'id' | 'createdAt'>): Promise<WorkOrder | null> => {
-      const mappedOrder = {
-        company_id: companyId,
-        claim_type: (() => {
-          switch (order.claimType) {
-            case 'Reclamo': return 'Corrective';
-            case 'Inspección': return 'Semiannual Tests';
-            case 'Reparación presupuestada': return 'Corrective';
-            case 'Reparación correctiva': return 'Corrective';
-            default: return 'Corrective';
-          }
-        })(),
-        corrective_type: order.correctiveType,
-        building_id: order.buildingId,
-        elevator_id: order.elevatorId,
-        equipment_id: order.equipmentId,
-        technician_id: order.technicianId,
-        contact_name: order.contactName,
-        contact_phone: order.contactPhone,
-        date_time: order.dateTime,
-        description: order.description,
-        status: order.status,
-        priority: order.priority,
-        start_time: order.startTime,
-        finish_time: order.finishTime,
-        comments: order.comments,
-        parts_used: order.partsUsed,
-        photo_urls: order.photoUrls,
-        signature_data_url: order.signatureDataUrl,
-      };
-
-      const result = await supabaseDataLayer.createWorkOrder(mappedOrder as any, companyId);
+      const result = await supabaseDataLayer.createWorkOrder(
+        {
+          company_id: companyId,
+          claim_type: order.claimType,
+          corrective_type: order.correctiveType,
+          building_id: order.buildingId,
+          elevator_id: order.elevatorId,
+          technician_id: order.technicianId,
+          contact_name: order.contactName,
+          contact_phone: order.contactPhone,
+          date_time: order.dateTime,
+          description: order.description,
+          status: order.status,
+          priority: order.priority,
+          start_time: order.startTime,
+          finish_time: order.finishTime,
+          comments: order.comments,
+          parts_used: order.partsUsed,
+          photo_urls: order.photoUrls,
+          signature_data_url: order.signatureDataUrl,
+        } as any,
+        companyId
+      );
       return result ? mapWorkOrder(result) : null;
     },
 
     updateWorkOrder: async (id: string, updates: Partial<WorkOrder>): Promise<WorkOrder | null> => {
       const mappedUpdates: any = {};
-      if (updates.claimType !== undefined) {
-        switch (updates.claimType) {
-          case 'Reclamo': mappedUpdates.claim_type = 'Corrective'; break;
-          case 'Inspección': mappedUpdates.claim_type = 'Semiannual Tests'; break;
-          case 'Reparación presupuestada': mappedUpdates.claim_type = 'Corrective'; break;
-          case 'Reparación correctiva': mappedUpdates.claim_type = 'Corrective'; break;
-          default: mappedUpdates.claim_type = 'Corrective'; break;
-        }
-      }
+      if (updates.claimType !== undefined) mappedUpdates.claim_type = updates.claimType;
       if (updates.correctiveType !== undefined) mappedUpdates.corrective_type = updates.correctiveType;
       if (updates.buildingId !== undefined) mappedUpdates.building_id = updates.buildingId;
-      if (updates.elevatorId !== undefined) mappedUpdates.elevator_id = updates.elevatorId ?? null;
-      if (updates.equipmentId !== undefined) mappedUpdates.equipment_id = updates.equipmentId ?? null;
+      if (updates.elevatorId !== undefined) mappedUpdates.elevator_id = updates.elevatorId;
       if (updates.technicianId !== undefined) mappedUpdates.technician_id = updates.technicianId;
       if (updates.contactName !== undefined) mappedUpdates.contact_name = updates.contactName;
       if (updates.contactPhone !== undefined) mappedUpdates.contact_phone = updates.contactPhone;
@@ -473,10 +409,6 @@ export function createDataLayer(companyId: string) {
     uploadSignature: async (dataUrl: string, workOrderId: string): Promise<string | null> => {
       return await supabaseDataLayer.uploadSignature(dataUrl, companyId, workOrderId);
     },
-// Remitos (plantillas y numerador)
-getDefaultRemitoTemplate: () => supabaseDataLayer.getDefaultRemitoTemplate(companyId),
-listRemitoTemplates: () => supabaseDataLayer.listRemitoTemplates(companyId),
-getNextRemitoNo: () => supabaseDataLayer.getNextRemitoNo(companyId),
 
     /* ===== Equipos ===== */
     listEquipments: async (buildingId?: string): Promise<Equipment[]> => {
@@ -527,85 +459,11 @@ getNextRemitoNo: () => supabaseDataLayer.getNextRemitoNo(companyId),
     deleteEquipment: async (id: string): Promise<void> => {
       await supabaseDataLayer.deleteEquipment(id, companyId);
     },
-
-    /* ===== Engineers ===== */
-    listEngineers: async (): Promise<Engineer[]> => {
-      const engineers = await supabaseDataLayer.listEngineers(companyId);
-      return engineers.map(mapEngineer);
-    },
-
-    getEngineer: async (id: string): Promise<Engineer | null> => {
-      const engineer = await supabaseDataLayer.getEngineer(id, companyId);
-      return engineer ? mapEngineer(engineer) : null;
-    },
-
-    getEngineerByUserId: async (userId: string): Promise<Engineer | null> => {
-      const engineer = await supabaseDataLayer.getEngineerByUserId(userId);
-      return engineer ? mapEngineer(engineer) : null;
-    },
-
-    createEngineer: async (engineer: Omit<Engineer, 'id' | 'createdAt'>): Promise<Engineer | null> => {
-      const result = await supabaseDataLayer.createEngineer(
-        {
-          company_id: companyId,
-          name: engineer.name,
-          contact: engineer.contact ?? null,
-          user_id: engineer.userId ?? null,
-        } as any,
-        companyId
-      );
-      return result ? mapEngineer(result) : null;
-    },
-
-    updateEngineer: async (id: string, updates: Partial<Engineer>): Promise<Engineer | null> => {
-      const result = await supabaseDataLayer.updateEngineer(id, updates as any, companyId);
-      return result ? mapEngineer(result) : null;
-    },
-
-    /* ===== Engineer Reports ===== */
-    listEngineerReports: async (engineerId?: string): Promise<EngineerReport[]> => {
-      const reports = await supabaseDataLayer.listEngineerReports(companyId, engineerId);
-      return reports.map(mapEngineerReport);
-    },
-
-    getEngineerReport: async (id: string): Promise<EngineerReport | null> => {
-      const report = await supabaseDataLayer.getEngineerReport(id, companyId);
-      return report ? mapEngineerReport(report) : null;
-    },
-
-    createEngineerReport: async (report: Omit<EngineerReport, 'id' | 'createdAt'>): Promise<EngineerReport | null> => {
-      const result = await supabaseDataLayer.createEngineerReport(
-        {
-          company_id: companyId,
-          engineer_id: report.engineerId,
-          address: report.address,
-          comments: report.comments ?? null,
-          is_read: report.isRead ?? false,
-        } as any,
-        companyId
-      );
-      return result ? mapEngineerReport(result) : null;
-    },
-
-    updateEngineerReport: async (id: string, updates: Partial<EngineerReport>): Promise<EngineerReport | null> => {
-      const mapped: any = {};
-      if (updates.engineerId !== undefined) mapped.engineer_id = updates.engineerId;
-      if (updates.address !== undefined) mapped.address = updates.address;
-      if (updates.comments !== undefined) mapped.comments = updates.comments;
-      if (updates.isRead !== undefined) mapped.is_read = updates.isRead;
-
-      const result = await supabaseDataLayer.updateEngineerReport(id, mapped, companyId);
-      return result ? mapEngineerReport(result) : null;
-    },
-
-    countUnreadReportsByEngineer: async (): Promise<Record<string, number>> => {
-      return await supabaseDataLayer.countUnreadReportsByEngineer(companyId);
-    },
   };
 }
 
 // Export a synchronous wrapper that throws if no company is selected
-export let currentCompanyId: string | null = null;
+let currentCompanyId: string | null = null;
 
 export function setCurrentCompanyId(companyId: string | null) {
   currentCompanyId = companyId;

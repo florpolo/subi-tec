@@ -1,14 +1,22 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { dataLayer, Building, Elevator, Equipment, EquipmentType } from '../lib/dataLayer';
 import { Building2, Plus, Edit } from 'lucide-react';
-import usePreserveScroll from '../hooks/usePreserveScroll';
 
 export default function Buildings() {
-  const [searchQuery, setSearchQuery] = useState<string>(() => sessionStorage.getItem('buildings_searchQuery') || '');
   const [buildings, setBuildings] = useState<Building[]>([]);
   const [elevators, setElevators] = useState<Elevator[]>([]);
   const [equipments, setEquipments] = useState<Equipment[]>([]);
+
+  const [showElevatorForm, setShowElevatorForm] = useState<string | null>(null);
+
+  const [newElevatorNumber, setNewElevatorNumber] = useState('');
+  const [newElevatorLocation, setNewElevatorLocation] = useState('');
+  const [newElevatorStops, setNewElevatorStops] = useState('');
+  const [newElevatorCapacity, setNewElevatorCapacity] = useState('');
+  const [newElevatorControlType, setNewElevatorControlType] = useState('');
+  const [newElevatorMachineRoom, setNewElevatorMachineRoom] = useState('');
+  const [newElevatorTwoDoors, setNewElevatorTwoDoors] = useState(false);
 
   const [editingBuildingId, setEditingBuildingId] = useState<string | null>(null);
   const [editAddress, setEditAddress] = useState('');
@@ -17,20 +25,14 @@ export default function Buildings() {
   const [editEntryHours, setEditEntryHours] = useState('');
   const [editClientName, setEditClientName] = useState('');
 
-  const filteredAndSortedBuildings = useMemo(() => {
-    return buildings
-      .filter(b =>
-        b.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        b.neighborhood.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-      .sort((a, b) => a.address.localeCompare(b.address));
-  }, [buildings, searchQuery]);
+  const [equipmentType, setEquipmentType] = useState<EquipmentType>('elevator');
 
-  usePreserveScroll('buildingsListScroll', [filteredAndSortedBuildings]);
-
-  useEffect(() => {
-    sessionStorage.setItem('buildings_searchQuery', searchQuery);
-  }, [searchQuery]);
+  const [newEquipmentName, setNewEquipmentName] = useState('');
+  const [newEquipmentLocation, setNewEquipmentLocation] = useState('');
+  const [newEquipmentBrand, setNewEquipmentBrand] = useState('');
+  const [newEquipmentModel, setNewEquipmentModel] = useState('');
+  const [newEquipmentSerial, setNewEquipmentSerial] = useState('');
+  const [newEquipmentCapacity, setNewEquipmentCapacity] = useState('');
 
   const loadData = async () => {
     const [buildingsList, elevatorsList, equipmentsList] = await Promise.all([
@@ -107,7 +109,86 @@ export default function Buildings() {
     await loadData();
   };
 
+  const handleShowElevatorForm = (buildingId: string) => {
+    setShowElevatorForm(buildingId);
+    setNewElevatorNumber('');
+    setNewElevatorLocation('');
+    setNewElevatorStops('');
+    setNewElevatorCapacity('');
+    setNewElevatorControlType('');
+    setNewElevatorMachineRoom('');
+    setNewElevatorTwoDoors(false);
+    setEquipmentType('elevator');
+    setNewEquipmentName('');
+    setNewEquipmentLocation('');
+    setNewEquipmentBrand('');
+    setNewEquipmentModel('');
+    setNewEquipmentSerial('');
+    setNewEquipmentCapacity('');
+  };
 
+  const handleCancelElevatorForm = () => {
+    setShowElevatorForm(null);
+    setNewElevatorNumber('');
+    setNewElevatorLocation('');
+    setNewElevatorStops('');
+    setNewElevatorCapacity('');
+    setNewElevatorControlType('');
+    setNewElevatorMachineRoom('');
+    setNewElevatorTwoDoors(false);
+    setEquipmentType('elevator');
+    setNewEquipmentName('');
+    setNewEquipmentLocation('');
+    setNewEquipmentBrand('');
+    setNewEquipmentModel('');
+    setNewEquipmentSerial('');
+    setNewEquipmentCapacity('');
+  };
+
+  const handleSaveElevator = async (buildingId: string) => {
+    if (equipmentType === 'elevator') {
+      if (!newElevatorNumber.trim() || !newElevatorLocation.trim()) {
+        alert('El número de ascensor y la ubicación son obligatorios');
+        return;
+      }
+
+      await dataLayer.createElevator({
+        buildingId,
+        number: parseInt(newElevatorNumber, 10),
+        locationDescription: newElevatorLocation.trim(),
+        hasTwoDoors: newElevatorTwoDoors,
+        stops: parseInt(newElevatorStops) || 0,
+        capacity: parseInt(newElevatorCapacity) || 0,
+        controlType: newElevatorControlType.trim(),
+        machineRoomLocation: newElevatorMachineRoom.trim(),
+        status: 'fit',
+      });
+
+      alert('¡Ascensor creado exitosamente!');
+    } else {
+      if (!newEquipmentName.trim() || !newEquipmentLocation.trim()) {
+        alert('El nombre y la ubicación/descripción son obligatorios');
+        return;
+      }
+
+      await dataLayer.createEquipment({
+        buildingId,
+        type: equipmentType,
+        name: newEquipmentName.trim(),
+        locationDescription: newEquipmentLocation.trim(),
+        brand: newEquipmentBrand.trim() || null,
+        model: newEquipmentModel.trim() || null,
+        serialNumber: newEquipmentSerial.trim() || null,
+        capacity: newEquipmentCapacity.trim() ? parseFloat(newEquipmentCapacity) : null,
+        status: 'fit',
+      });
+
+      alert('¡Equipo creado exitosamente!');
+    }
+
+    handleCancelElevatorForm();
+    await loadData();
+  };
 
   return (
     <div className="space-y-6">
@@ -125,33 +206,19 @@ export default function Buildings() {
         </Link>
       </div>
 
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Buscar por dirección o barrio..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full px-4 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
-        />
-      </div>
-
-      {filteredAndSortedBuildings.length === 0 ? (
+      {buildings.length === 0 ? (
         <div className="bg-white rounded-xl shadow-lg border-2 border-gray-300 p-8 text-center">
-          <p className="text-[#5e4c1e] text-lg mb-4">
-            {searchQuery ? 'No se encontraron edificios.' : 'No hay edificios todavía'}
-          </p>
-          {!searchQuery && (
-            <Link
-              to="/buildings/new"
-              className="inline-block px-6 py-3 bg-yellow-500 text-[#520f0f] rounded-lg font-bold hover:bg-yellow-400 transition-colors"
-            >
-              Crear tu primer edificio
-            </Link>
-          )}
+          <p className="text-[#5e4c1e] text-lg mb-4">No hay edificios todavía</p>
+          <Link
+            to="/buildings/new"
+            className="inline-block px-6 py-3 bg-yellow-500 text-[#520f0f] rounded-lg font-bold hover:bg-yellow-400 transition-colors"
+          >
+            Crear tu primer edificio
+          </Link>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-6">
-          {filteredAndSortedBuildings.map((building) => {
+          {buildings.map((building) => {
             const buildingElevators = getBuildingElevators(building.id);
 
             return (
@@ -293,14 +360,223 @@ export default function Buildings() {
                   <div>
                     <div className="flex items-center justify-between mb-3">
                       <h4 className="font-bold text-[#694e35]">Ascensores ({getBuildingElevators(building.id).length})</h4>
-                      <Link
-                        to={`/buildings/${building.id}/edit`}
+                      <button
+                        onClick={() => handleShowElevatorForm(building.id)}
                         className="flex items-center gap-1 px-3 py-1 text-sm bg-[#fcca53] text-[#694e35] rounded-lg font-medium hover:bg-[#ffe5a5] transition-colors focus:outline-none focus:ring-2 focus:ring-[#694e35]"
                       >
                         <Plus size={16} />
                         Agregar equipo
-                      </Link>
+                      </button>
                     </div>
+
+                    {showElevatorForm === building.id && (
+                      <div className="bg-white p-4 rounded-lg border-2 border-[#fcca53] mb-3">
+                        <h5 className="font-bold text-[#694e35] mb-3">Nuevo equipo</h5>
+
+                        <div className="md:col-span-2 mb-3">
+                          <label className="block text-[#694e35] font-medium mb-1 text-sm">
+                            Tipo de equipo
+                          </label>
+                          <select
+                            value={equipmentType}
+                            onChange={(e) => setEquipmentType(e.target.value as EquipmentType)}
+                            className="w-full px-3 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                          >
+                            <option value="elevator">Ascensor</option>
+                            <option value="water_pump">Bomba de agua</option>
+                            <option value="freight_elevator">Montacarga</option>
+                            <option value="car_lift">Montacoche</option>
+                            <option value="dumbwaiter">Montaplatos</option>
+                            <option value="camillero">Camillero</option>
+                            <option value="other">Otro</option>
+                          </select>
+                        </div>
+
+                        {equipmentType === 'elevator' ? (
+                          <>
+                            <h6 className="font-semibold text-[#694e35] mb-2">Datos del ascensor</h6>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                              <div>
+                                <label className="block text-[#694e35] font-medium mb-1 text-sm">
+                                  Número <span className="text-red-600">*</span>
+                                </label>
+                                <input
+                                  type="number"
+                                  value={newElevatorNumber}
+                                  onChange={(e) => setNewElevatorNumber(e.target.value)}
+                                  placeholder="Ej: 1"
+                                  className="w-full px-3 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                                />
+                              </div>
+                              <div className="md:col-span-2">
+                                <label className="block text-[#694e35] font-medium mb-1 text-sm">
+                                  Ubicación/Descripción <span className="text-red-600">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  value={newElevatorLocation}
+                                  onChange={(e) => setNewElevatorLocation(e.target.value)}
+                                  placeholder="Ej: Frente al hall principal"
+                                  className="w-full px-3 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[#694e35] font-medium mb-1 text-sm">
+                                  Paradas (pisos)
+                                </label>
+                                <input
+                                  type="number"
+                                  value={newElevatorStops}
+                                  onChange={(e) => setNewElevatorStops(e.target.value)}
+                                  placeholder="Ej: 8"
+                                  className="w-full px-3 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[#694e35] font-medium mb-1 text-sm">
+                                  Capacidad (kg)
+                                </label>
+                                <input
+                                  type="number"
+                                  value={newElevatorCapacity}
+                                  onChange={(e) => setNewElevatorCapacity(e.target.value)}
+                                  placeholder="Ej: 450"
+                                  className="w-full px-3 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[#694e35] font-medium mb-1 text-sm">
+                                  Tipo de control
+                                </label>
+                                <input
+                                  type="text"
+                                  value={newElevatorControlType}
+                                  onChange={(e) => setNewElevatorControlType(e.target.value)}
+                                  placeholder="Ej: Automático"
+                                  className="w-full px-3 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[#694e35] font-medium mb-1 text-sm">
+                                  Sala de máquinas
+                                </label>
+                                <input
+                                  type="text"
+                                  value={newElevatorMachineRoom}
+                                  onChange={(e) => setNewElevatorMachineRoom(e.target.value)}
+                                  placeholder="Ej: Azotea"
+                                  className="w-full px-3 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                                />
+                              </div>
+                              <div className="md:col-span-2">
+                                <label className="flex items-center gap-2 text-[#694e35] font-medium text-sm">
+                                  <input
+                                    type="checkbox"
+                                    checked={newElevatorTwoDoors}
+                                    onChange={(e) => setNewElevatorTwoDoors(e.target.checked)}
+                                    className="w-4 h-4 border-2 border-[#d4caaf] rounded focus:ring-2 focus:ring-[#fcca53]"
+                                  />
+                                  Dos puertas
+                                </label>
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <h6 className="font-semibold text-[#694e35] mb-2">Datos del equipo</h6>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                              <div className="md:col-span-2">
+                                <label className="block text-[#694e35] font-medium mb-1 text-sm">
+                                  Nombre <span className="text-red-600">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  value={newEquipmentName}
+                                  onChange={(e) => setNewEquipmentName(e.target.value)}
+                                  placeholder="Ej: Bomba 1 / Montacarga B"
+                                  className="w-full px-3 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                                />
+                              </div>
+                              <div className="md:col-span-2">
+                                <label className="block text-[#694e35] font-medium mb-1 text-sm">
+                                  Ubicación/Descripción <span className="text-red-600">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  value={newEquipmentLocation}
+                                  onChange={(e) => setNewEquipmentLocation(e.target.value)}
+                                  placeholder="Ej: Subsuelo / Frente al hall"
+                                  className="w-full px-3 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[#694e35] font-medium mb-1 text-sm">
+                                  Marca
+                                </label>
+                                <input
+                                  type="text"
+                                  value={newEquipmentBrand}
+                                  onChange={(e) => setNewEquipmentBrand(e.target.value)}
+                                  placeholder="Ej: Siemens"
+                                  className="w-full px-3 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[#694e35] font-medium mb-1 text-sm">
+                                  Modelo
+                                </label>
+                                <input
+                                  type="text"
+                                  value={newEquipmentModel}
+                                  onChange={(e) => setNewEquipmentModel(e.target.value)}
+                                  placeholder="Ej: XYZ-2000"
+                                  className="w-full px-3 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[#694e35] font-medium mb-1 text-sm">
+                                  N.º de serie
+                                </label>
+                                <input
+                                  type="text"
+                                  value={newEquipmentSerial}
+                                  onChange={(e) => setNewEquipmentSerial(e.target.value)}
+                                  placeholder="Ej: SN123456"
+                                  className="w-full px-3 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                                />
+                              </div>
+                              <div>
+                                <label className="block text-[#694e35] font-medium mb-1 text-sm">
+                                  Capacidad
+                                </label>
+                                <input
+                                  type="text"
+                                  value={newEquipmentCapacity}
+                                  onChange={(e) => setNewEquipmentCapacity(e.target.value)}
+                                  placeholder="Ej: 1000 kg / 5 HP"
+                                  className="w-full px-3 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                                />
+                              </div>
+                            </div>
+                          </>
+                        )}
+
+                        <div className="flex gap-2 justify-end">
+                          <button
+                            onClick={handleCancelElevatorForm}
+                            className="px-4 py-2 bg-[#d4caaf] text-[#694e35] rounded-lg font-medium hover:bg-[#bda386] transition-colors"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            onClick={() => handleSaveElevator(building.id)}
+                            className="px-4 py-2 bg-[#fcca53] text-[#694e35] rounded-lg font-medium hover:bg-[#ffe5a5] transition-colors"
+                          >
+                            Guardar
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
                     {getBuildingElevators(building.id).length === 0 ? (
                       <p className="text-[#5e4c1e] text-sm">No hay ascensores en este edificio</p>
@@ -334,10 +610,9 @@ export default function Buildings() {
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                         {getBuildingEquipments(building.id).map((equipment) => (
-                          <Link
+                          <div
                             key={equipment.id}
-                            to={`/equipment/${equipment.id}`}
-                            className="bg-white p-4 rounded-lg border-2 border-[#d4caaf] hover:border-[#fcca53] transition-colors focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                            className="bg-white p-4 rounded-lg border-2 border-[#d4caaf] hover:border-[#fcca53] transition-colors"
                           >
                             <div className="flex items-start justify-between mb-2">
                               <span className="text-sm font-bold text-[#fcca53] uppercase">{getEquipmentTypeLabel(equipment.type)}</span>
@@ -350,7 +625,7 @@ export default function Buildings() {
                               {equipment.serialNumber && <div>Serie: {equipment.serialNumber}</div>}
                               {equipment.capacity && <div>Capacidad: {equipment.capacity}</div>}
                             </div>
-                          </Link>
+                          </div>
                         ))}
                       </div>
                     )}
