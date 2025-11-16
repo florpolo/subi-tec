@@ -8,7 +8,7 @@ export default function SignUp() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [joinCode, setJoinCode] = useState('');
-  const [role, setRole] = useState<'office' | 'technician' | 'engineer'>('technician');
+  const [role, setRole] = useState<'office' | 'technician'>('technician');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -17,10 +17,6 @@ export default function SignUp() {
   const [technicianRole, setTechnicianRole] = useState<'Reclamista' | 'Engrasador'>('Reclamista');
   const [technicianSpecialty, setTechnicianSpecialty] = useState('');
   const [technicianContact, setTechnicianContact] = useState('');
-
-  // Engineer-specific fields
-  const [engineerName, setEngineerName] = useState('');
-  const [engineerContact, setEngineerContact] = useState('');
 
   const validateJoinCode = async (code: string): Promise<{ valid: boolean; companyId?: string; error?: string }> => {
     const { data, error } = await supabase
@@ -75,32 +71,6 @@ export default function SignUp() {
     if (error) throw error;
   };
 
-  const createEngineerProfile = async (userId: string) => {
-    const { data, error } = await supabase
-      .from('engineers')
-      .insert({
-        user_id: userId,
-        name: engineerName,
-        contact: engineerContact,
-      })
-      .select()
-      .maybeSingle();
-
-    if (error) throw error;
-    return data;
-  };
-
-  const joinEngineerToCompany = async (engineerId: string, companyId: string) => {
-    const { error } = await supabase
-      .from('engineer_company_memberships')
-      .insert({
-        engineer_id: engineerId,
-        company_id: companyId,
-      });
-
-    if (error) throw error;
-  };
-
   const handleSignUp = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
@@ -110,23 +80,13 @@ export default function SignUp() {
       // Validate technician fields if role is technician
       if (role === 'technician') {
         if (!technicianName.trim()) {
-          throw new Error('Por favor ingresa tu nombre completo');
+          throw new Error('Please enter your full name');
         }
         if (!technicianSpecialty.trim()) {
-          throw new Error('Por favor ingresa tu especialidad');
+          throw new Error('Please enter your specialty');
         }
         if (!technicianContact.trim()) {
-          throw new Error('Por favor ingresa tu información de contacto');
-        }
-      }
-
-      // Validate engineer fields if role is engineer
-      if (role === 'engineer') {
-        if (!engineerName.trim()) {
-          throw new Error('Por favor ingresa tu nombre completo');
-        }
-        if (!engineerContact.trim()) {
-          throw new Error('Por favor ingresa tu información de contacto');
+          throw new Error('Please enter your contact information');
         }
       }
 
@@ -153,32 +113,22 @@ export default function SignUp() {
         throw new Error('Failed to create user');
       }
 
-      // Create company membership for office and technician roles (engineers don't use company_members)
-      if (role === 'office' || role === 'technician') {
-        await createMembership(signUpData.user.id, codeValidation.companyId!, role);
-      }
+      // Create company membership (no longer using trigger)
+      await createMembership(signUpData.user.id, codeValidation.companyId!, role);
 
       // If technician role, create technician profile
       if (role === 'technician') {
         await createTechnicianProfile(signUpData.user.id, codeValidation.companyId!);
       }
 
-      // If engineer role, create engineer profile and join the company
-      if (role === 'engineer') {
-        const engineerProfile = await createEngineerProfile(signUpData.user.id);
-        if (engineerProfile) {
-          await joinEngineerToCompany(engineerProfile.id, codeValidation.companyId!);
-        }
-      }
-
       // Sign out the user so they have to sign in manually
       // This ensures the company membership is loaded correctly on sign in
       await supabase.auth.signOut();
 
-      alert('Usuario creado exitosamente! Por favor inicia sesión.');
+      alert('User created successfully! Please sign in.');
       navigate('/signin');
     } catch (err: any) {
-      setError(err.message || 'Error al registrarse');
+      setError(err.message || 'Error signing up');
     } finally {
       setLoading(false);
     }
@@ -233,12 +183,11 @@ export default function SignUp() {
                 <UserCircle className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
                 <select
                   value={role}
-                  onChange={(e) => setRole(e.target.value as 'office' | 'technician' | 'engineer')}
+                  onChange={(e) => setRole(e.target.value as 'office' | 'technician')}
                   required
                   className="w-full pl-10 pr-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent appearance-none bg-white"
                 >
                   <option value="technician">Técnico</option>
-                  <option value="engineer">Ingeniero</option>
                   <option value="office">Oficina</option>
                 </select>
               </div>
@@ -301,43 +250,6 @@ export default function SignUp() {
                       type="text"
                       value={technicianContact}
                       onChange={(e) => setTechnicianContact(e.target.value)}
-                      required
-                      className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
-                      placeholder="ej., +54 11 1234-5678"
-                    />
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* Engineer-specific fields */}
-            {role === 'engineer' && (
-              <>
-                <div className="mb-4 p-4 bg-gray-50 rounded-lg border-2 border-gray-300">
-                  <h3 className="text-sm font-bold text-[#520f0f] mb-3">Información del Ingeniero</h3>
-
-                  <div className="mb-3">
-                    <label className="block text-sm font-medium text-[#520f0f] mb-2">
-                      Nombre Completo *
-                    </label>
-                    <input
-                      type="text"
-                      value={engineerName}
-                      onChange={(e) => setEngineerName(e.target.value)}
-                      required
-                      className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
-                      placeholder="ej., María González"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-[#520f0f] mb-2">
-                      Contacto (Teléfono/Móvil) *
-                    </label>
-                    <input
-                      type="text"
-                      value={engineerContact}
-                      onChange={(e) => setEngineerContact(e.target.value)}
                       required
                       className="w-full px-4 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
                       placeholder="ej., +54 11 1234-5678"

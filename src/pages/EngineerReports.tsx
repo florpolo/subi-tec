@@ -1,32 +1,27 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { dataLayer, EngineerReport } from '../lib/dataLayer';
 import { useAuth } from '../contexts/AuthContext';
-import { FileText, Plus, Building2 } from 'lucide-react';
+import { FileText, Plus } from 'lucide-react';
 
 export default function EngineerReports() {
-  const { engineerId, activeCompanyId, engineerMemberships } = useAuth();
-  const navigate = useNavigate();
+  const { engineerId } = useAuth();
   const [reports, setReports] = useState<EngineerReport[]>([]);
   const [showForm, setShowForm] = useState(false);
 
   const [address, setAddress] = useState('');
   const [comments, setComments] = useState('');
 
-  const activeCompany = engineerMemberships.find(m => m.company_id === activeCompanyId);
-
   const loadReports = async () => {
-    if (!engineerId || !activeCompanyId) return;
+    if (!engineerId) return;
     const reportsList = await dataLayer.listEngineerReports(engineerId);
-    const filtered = reportsList.filter(r => r.companyId === activeCompanyId);
-    setReports(filtered);
+    setReports(reportsList);
   };
 
   useEffect(() => {
     loadReports();
     const interval = setInterval(loadReports, 5000);
     return () => clearInterval(interval);
-  }, [engineerId, activeCompanyId]);
+  }, [engineerId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -36,18 +31,12 @@ export default function EngineerReports() {
       return;
     }
 
-    if (!activeCompanyId) {
-      alert('Selecciona una compañía primero');
-      return;
-    }
-
     if (!address.trim()) {
       alert('La dirección es obligatoria');
       return;
     }
 
     await dataLayer.createEngineerReport({
-      companyId: activeCompanyId,
       engineerId,
       address: address.trim(),
       comments: comments.trim() || null,
@@ -73,31 +62,11 @@ export default function EngineerReports() {
     });
   };
 
-  if (!activeCompanyId) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <Building2 size={64} className="text-gray-400 mb-4" />
-        <h2 className="text-2xl font-bold text-gray-700 mb-2">Sin Compañía Activa</h2>
-        <p className="text-gray-500 mb-6 text-center max-w-md">
-          Debes unirte a una compañía antes de poder crear reportes.
-        </p>
-        <button
-          onClick={() => navigate('/engineer-dashboard')}
-          className="px-6 py-3 bg-[#520f0f] text-white rounded-lg hover:bg-[#6b1414] transition-colors"
-        >
-          Ir a Mis Compañías
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-3xl font-bold text-[#694e35] mb-2">
-            Mis Reportes {activeCompany && `- ${activeCompany.company?.name}`}
-          </h2>
+          <h2 className="text-3xl font-bold text-[#694e35] mb-2">Mis Reportes</h2>
           <p className="text-[#5e4c1e]">Crear y visualizar reportes de ingeniería</p>
         </div>
         <button

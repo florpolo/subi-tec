@@ -102,17 +102,11 @@ export interface Equipment {
 
 export interface Engineer {
   id: string;
-  user_id: string;
+  company_id: string;
+  user_id?: string | null;
   name: string;
   contact: string | null;
   created_at?: string;
-}
-
-export interface EngineerCompanyMembership {
-  id: string;
-  engineer_id: string;
-  company_id: string;
-  created_at: string;
 }
 
 export interface EngineerReport {
@@ -533,17 +527,19 @@ async updateWorkOrder(id: string, updates: Partial<WorkOrder>, companyId: string
   /* ========== Engineers ========== */
   async listEngineers(companyId: string): Promise<Engineer[]> {
     const { data, error } = await supabase
-      .from('engineer_company_memberships')
-      .select('engineer:engineers(*)')
-      .eq('company_id', companyId);
+      .from<Engineer>('engineers')
+      .select('*')
+      .eq('company_id', companyId)
+      .order('created_at', { ascending: false });
     if (error) throw error;
-    return (data || []).map((row: any) => row.engineer).filter(Boolean) as Engineer[];
+    return (data || []) as Engineer[];
   },
 
-  async getEngineer(id: string): Promise<Engineer | null> {
+  async getEngineer(id: string, companyId: string): Promise<Engineer | null> {
     const { data, error } = await supabase
       .from<Engineer>('engineers')
       .select('*')
+      .eq('company_id', companyId)
       .eq('id', id)
       .maybeSingle();
     if (error) throw error;
@@ -561,85 +557,29 @@ async updateWorkOrder(id: string, updates: Partial<WorkOrder>, companyId: string
   },
 
   async createEngineer(
-    engineer: Omit<Engineer, 'id' | 'created_at'>
+    engineer: Omit<Engineer, 'id' | 'created_at'>,
+    companyId: string
   ): Promise<Engineer | null> {
-    const { data, error } = await supabase.from<Engineer>('engineers').insert(engineer).select().maybeSingle();
+    const payload = { ...engineer, company_id: companyId };
+    const { data, error } = await supabase.from<Engineer>('engineers').insert(payload).select().maybeSingle();
     if (error) throw error;
     return data || null;
   },
 
   async updateEngineer(
     id: string,
-    updates: Partial<Engineer>
+    updates: Partial<Engineer>,
+    companyId: string
   ): Promise<Engineer | null> {
     const { data, error } = await supabase
       .from<Engineer>('engineers')
       .update(updates)
+      .eq('company_id', companyId)
       .eq('id', id)
       .select()
       .maybeSingle();
     if (error) throw error;
     return data || null;
-  },
-
-  /* ========== Engineer Company Memberships ========== */
-  async listEngineerMemberships(engineerId: string): Promise<EngineerCompanyMembership[]> {
-    const { data, error } = await supabase
-      .from<EngineerCompanyMembership>('engineer_company_memberships')
-      .select('*')
-      .eq('engineer_id', engineerId)
-      .order('created_at', { ascending: false });
-    if (error) throw error;
-    return (data || []) as EngineerCompanyMembership[];
-  },
-
-  async createEngineerMembership(
-    engineerId: string,
-    joinCode: string
-  ): Promise<EngineerCompanyMembership | null> {
-    const { data: codeData, error: codeError } = await supabase
-      .from('company_join_codes')
-      .select('company_id')
-      .eq('code', joinCode)
-      .eq('is_active', true)
-      .maybeSingle();
-
-    if (codeError) throw codeError;
-    if (!codeData) throw new Error('Invalid or inactive join code');
-
-    const { data, error } = await supabase
-      .from<EngineerCompanyMembership>('engineer_company_memberships')
-      .insert({
-        engineer_id: engineerId,
-        company_id: codeData.company_id,
-      })
-      .select()
-      .maybeSingle();
-
-    if (error) throw error;
-    return data || null;
-  },
-
-  async removeEngineerMembership(membershipId: string): Promise<void> {
-    const { error } = await supabase
-      .from('engineer_company_memberships')
-      .delete()
-      .eq('id', membershipId);
-    if (error) throw error;
-  },
-
-  async getEngineerCompanies(engineerId: string): Promise<Array<{ id: string; company_id: string; company_name: string }>> {
-    const { data, error } = await supabase
-      .from('engineer_company_memberships')
-      .select('id, company_id, company:companies(name)')
-      .eq('engineer_id', engineerId);
-
-    if (error) throw error;
-    return (data || []).map((row: any) => ({
-      id: row.id,
-      company_id: row.company_id,
-      company_name: row.company?.name || 'Unknown',
-    }));
   },
 
   /* ========== Engineer Reports ========== */
@@ -716,5 +656,4 @@ export type {
   EquipmentType as _EquipmentType,
   Engineer as _Engineer,
   EngineerReport as _EngineerReport,
-  EngineerCompanyMembership as _EngineerCompanyMembership,
 };
