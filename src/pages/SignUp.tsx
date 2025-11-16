@@ -75,14 +75,27 @@ export default function SignUp() {
     if (error) throw error;
   };
 
-  const createEngineerProfile = async (userId: string, companyId: string) => {
-    const { error } = await supabase
+  const createEngineerProfile = async (userId: string) => {
+    const { data, error } = await supabase
       .from('engineers')
       .insert({
         user_id: userId,
-        company_id: companyId,
         name: engineerName,
         contact: engineerContact,
+      })
+      .select()
+      .maybeSingle();
+
+    if (error) throw error;
+    return data;
+  };
+
+  const joinEngineerToCompany = async (engineerId: string, companyId: string) => {
+    const { error } = await supabase
+      .from('engineer_company_memberships')
+      .insert({
+        engineer_id: engineerId,
+        company_id: companyId,
       });
 
     if (error) throw error;
@@ -150,9 +163,12 @@ export default function SignUp() {
         await createTechnicianProfile(signUpData.user.id, codeValidation.companyId!);
       }
 
-      // If engineer role, create engineer profile
+      // If engineer role, create engineer profile and join the company
       if (role === 'engineer') {
-        await createEngineerProfile(signUpData.user.id, codeValidation.companyId!);
+        const engineerProfile = await createEngineerProfile(signUpData.user.id);
+        if (engineerProfile) {
+          await joinEngineerToCompany(engineerProfile.id, codeValidation.companyId!);
+        }
       }
 
       // Sign out the user so they have to sign in manually

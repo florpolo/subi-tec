@@ -10,6 +10,7 @@ import type {
   EquipmentType as SupabaseEquipmentType,
   Engineer as SupabaseEngineer,
   EngineerReport as SupabaseEngineerReport,
+  EngineerCompanyMembership as SupabaseEngineerCompanyMembership,
 } from './supabaseDataLayer';
 
 export interface Building {
@@ -103,12 +104,21 @@ export interface Engineer {
   id: string;
   name: string;
   contact?: string | null;
-  userId?: string | null;
+  userId: string;
   createdAt?: string;
+}
+
+export interface EngineerCompanyMembership {
+  id: string;
+  engineerId: string;
+  companyId: string;
+  companyName: string;
+  createdAt: string;
 }
 
 export interface EngineerReport {
   id: string;
+  companyId: string;
   engineerId: string;
   address: string;
   comments?: string | null;
@@ -219,6 +229,7 @@ function mapEngineer(e: SupabaseEngineer): Engineer {
 function mapEngineerReport(r: SupabaseEngineerReport): EngineerReport {
   return {
     id: r.id,
+    companyId: r.company_id,
     engineerId: r.engineer_id,
     address: r.address,
     comments: r.comments,
@@ -535,7 +546,7 @@ getNextRemitoNo: () => supabaseDataLayer.getNextRemitoNo(companyId),
     },
 
     getEngineer: async (id: string): Promise<Engineer | null> => {
-      const engineer = await supabaseDataLayer.getEngineer(id, companyId);
+      const engineer = await supabaseDataLayer.getEngineer(id);
       return engineer ? mapEngineer(engineer) : null;
     },
 
@@ -545,21 +556,48 @@ getNextRemitoNo: () => supabaseDataLayer.getNextRemitoNo(companyId),
     },
 
     createEngineer: async (engineer: Omit<Engineer, 'id' | 'createdAt'>): Promise<Engineer | null> => {
-      const result = await supabaseDataLayer.createEngineer(
-        {
-          company_id: companyId,
-          name: engineer.name,
-          contact: engineer.contact ?? null,
-          user_id: engineer.userId ?? null,
-        } as any,
-        companyId
-      );
+      const result = await supabaseDataLayer.createEngineer({
+        name: engineer.name,
+        contact: engineer.contact ?? null,
+        user_id: engineer.userId,
+      } as any);
       return result ? mapEngineer(result) : null;
     },
 
     updateEngineer: async (id: string, updates: Partial<Engineer>): Promise<Engineer | null> => {
-      const result = await supabaseDataLayer.updateEngineer(id, updates as any, companyId);
+      const mapped: any = {};
+      if (updates.name !== undefined) mapped.name = updates.name;
+      if (updates.contact !== undefined) mapped.contact = updates.contact;
+      const result = await supabaseDataLayer.updateEngineer(id, mapped);
       return result ? mapEngineer(result) : null;
+    },
+
+    /* ===== Engineer Company Memberships ===== */
+    listEngineerMemberships: async (engineerId: string): Promise<EngineerCompanyMembership[]> => {
+      const memberships = await supabaseDataLayer.getEngineerCompanies(engineerId);
+      return memberships.map(m => ({
+        id: m.id,
+        engineerId: engineerId,
+        companyId: m.company_id,
+        companyName: m.company_name,
+        createdAt: '',
+      }));
+    },
+
+    joinCompanyWithCode: async (engineerId: string, joinCode: string): Promise<EngineerCompanyMembership | null> => {
+      const result = await supabaseDataLayer.createEngineerMembership(engineerId, joinCode);
+      if (!result) return null;
+      return {
+        id: result.id,
+        engineerId: result.engineer_id,
+        companyId: result.company_id,
+        companyName: '',
+        createdAt: result.created_at,
+      };
+    },
+
+    removeEngineerMembership: async (membershipId: string): Promise<void> => {
+      await supabaseDataLayer.removeEngineerMembership(membershipId);
     },
 
     /* ===== Engineer Reports ===== */
@@ -576,13 +614,13 @@ getNextRemitoNo: () => supabaseDataLayer.getNextRemitoNo(companyId),
     createEngineerReport: async (report: Omit<EngineerReport, 'id' | 'createdAt'>): Promise<EngineerReport | null> => {
       const result = await supabaseDataLayer.createEngineerReport(
         {
-          company_id: companyId,
+          company_id: report.companyId,
           engineer_id: report.engineerId,
           address: report.address,
           comments: report.comments ?? null,
           is_read: report.isRead ?? false,
         } as any,
-        companyId
+        report.companyId
       );
       return result ? mapEngineerReport(result) : null;
     },

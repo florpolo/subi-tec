@@ -14,6 +14,7 @@ import TechnicianDetail from './pages/TechnicianDetail';
 import Engineers from './pages/Engineers';
 import EngineerDetail from './pages/EngineerDetail';
 import EngineerReports from './pages/EngineerReports';
+import EngineerDashboard from './pages/EngineerDashboard';
 import MyTasks from './pages/MyTasks';
 import SignIn from './pages/SignIn';
 import SignUp from './pages/SignUp';
@@ -39,7 +40,7 @@ function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode;
   }
 
   if (requiredRole && activeCompanyRole !== requiredRole) {
-    const defaultRoute = activeCompanyRole === 'technician' ? '/my-tasks' : activeCompanyRole === 'engineer' ? '/engineer-reports' : '/orders';
+    const defaultRoute = activeCompanyRole === 'technician' ? '/my-tasks' : activeCompanyRole === 'engineer' ? '/engineer-dashboard' : '/orders';
     return <Navigate to={defaultRoute} replace />;
   }
 
@@ -49,7 +50,7 @@ function ProtectedRoute({ children, requiredRole }: { children: React.ReactNode;
 function AppRoutes() {
   const { user, activeCompanyRole } = useAuth();
 
-  const defaultRoute = activeCompanyRole === 'technician' ? '/my-tasks' : activeCompanyRole === 'engineer' ? '/engineer-reports' : '/orders';
+  const defaultRoute = activeCompanyRole === 'technician' ? '/my-tasks' : activeCompanyRole === 'engineer' ? '/engineer-dashboard' : '/orders';
 
   return (
     <Routes>
@@ -71,6 +72,7 @@ function AppRoutes() {
       <Route path="/technicians/:id" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><TechnicianDetail /></Layout></ProtectedRoute>} />
       <Route path="/engineers" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><Engineers /></Layout></ProtectedRoute>} />
       <Route path="/engineers/:id" element={<ProtectedRoute requiredRole="office"><Layout viewMode="office"><EngineerDetail /></Layout></ProtectedRoute>} />
+      <Route path="/engineer-dashboard" element={<ProtectedRoute requiredRole="engineer"><Layout viewMode="engineer"><EngineerDashboard /></Layout></ProtectedRoute>} />
       <Route path="/engineer-reports" element={<ProtectedRoute requiredRole="engineer"><Layout viewMode="engineer"><EngineerReports /></Layout></ProtectedRoute>} />
       <Route path="/my-tasks" element={<ProtectedRoute requiredRole="technician"><Layout viewMode="technician"><MyTasks /></Layout></ProtectedRoute>} />
       <Route path="/my-tasks/:id" element={<ProtectedRoute requiredRole="technician"><Layout viewMode="technician"><MyTasks /></Layout></ProtectedRoute>} />
