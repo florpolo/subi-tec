@@ -155,7 +155,7 @@ export default function TechnicianDetail() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
             <div className="bg-white p-4 rounded-lg border-2 border-[#d4caaf]">
               <div className="text-2xl font-bold text-[#694e35]">{dailyCounters.total}</div>
-              <div className="text-sm text-[#5e4c1e]">Total del día</div>
+              <div className="text-sm text-[#5e4c1e]">Hoy</div>
             </div>
             <div className="bg-white p-4 rounded-lg border-2 border-[#d4caaf]">
               <div className="text-2xl font-bold text-yellow-600">{dailyCounters.pending}</div>
