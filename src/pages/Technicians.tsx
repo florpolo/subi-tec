@@ -285,7 +285,7 @@ export default function Technicians() {
                         <h4 className="text-xs font-bold text-[#5e4c1e] mb-2">TAREAS</h4>
                         <div className="grid grid-cols-2 gap-2 text-center">
                           <div>
-                            <p className="text-xs text-[#5e4c1e]">Total del día</p>
+                            <p className="text-xs text-[#5e4c1e]">Hoy</p>
                             <p className="text-lg font-bold text-[#694e35]">
                               {dailyCounters[technician.id]?.total || 0}
                             </p>
