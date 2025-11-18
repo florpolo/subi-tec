@@ -16,7 +16,7 @@ import { useAuth } from '../contexts/AuthContext';
 export default function WorkOrderDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { activeCompanyId: companyId } = useAuth();
+  const { companyId } = useAuth();
 
   const [order, setOrder] = useState<WorkOrder | null>(null);
   const [building, setBuilding] = useState<Building | null>(null);
@@ -432,7 +432,7 @@ export default function WorkOrderDetail() {
                   {order.startTime && (
                     <div>
                       <span className="text-[#5e4c1e]">Iniciada:</span>{' '}
-                      <span className="font-medium text-[#694e35]}>
+                      <span className="font-medium text-[#694e35]">
                         {new Date(order.startTime).toLocaleString('es-AR', {
                           day: '2-digit',
                           month: '2-digit',
@@ -443,21 +443,23 @@ export default function WorkOrderDetail() {
                       </span>
                     </div>
                   )}
-
-                        {order.finishTime && (
-  <div>
-    <span className="text-[#5e4c1e]">Finalizada:</span>{' '}
-    <span className="font-medium text-[#694e35]">
-      {new Date(order.finishTime).toLocaleString('es-AR', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      })}
-    </span>
-  </div>
-)}
+                  {order.finishTime && (
+                    <div>
+                      <span className="text-[#5e4c1e]">Finalizada:</span>{' '}
+                      <span className="font-medium text-[#694e35]">
+                        {new Date(order.finishTime).toLocaleString('es-AR', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
 
             {order.comments && (
               <div>
