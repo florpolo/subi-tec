@@ -16,7 +16,7 @@ import { useAuth } from '../contexts/AuthContext';
 export default function WorkOrderDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user, companyId } = useAuth();
+  const { activeCompanyId: companyId } = useAuth();
 
   const [order, setOrder] = useState<WorkOrder | null>(null);
   const [building, setBuilding] = useState<Building | null>(null);
