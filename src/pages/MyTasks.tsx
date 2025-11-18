@@ -86,6 +86,7 @@ type FormState = {
   parts: Array<{ name: string; quantity: number }>;
   photos: string[];
   signature: string;
+  technicianSignature: string;
   dni: string;
   aclaracion: string; // nombre/aclaración del firmante
 };
@@ -285,7 +286,7 @@ export default function MyTasks() {
 
   const handleSaveChanges = async (orderId: string) => {
     if (!activeCompanyId) return;
-    const fs = formStates[orderId] || { comments: '', parts: [], photos: [], signature: '', dni: '', aclaracion: '' };
+    const fs = formStates[orderId] || { comments: '', parts: [], photos: [], signature: '', technicianSignature: '', dni: '', aclaracion: '' };
     await supabaseDataLayer.updateWorkOrder(
       orderId,
       {
@@ -293,8 +294,9 @@ export default function MyTasks() {
         parts_used: fs.parts.length > 0 ? fs.parts : undefined,
         photo_urls: fs.photos.length > 0 ? fs.photos : undefined,
         signature_data_url: fs.signature || undefined,
+        technician_signature_data_url: fs.technicianSignature || undefined,
         client_dni: fs.dni || undefined,
-        client_name: fs.aclaracion || undefined,
+        client_aclaracion: fs.aclaracion || undefined,
       },
       activeCompanyId
     );
@@ -304,7 +306,17 @@ export default function MyTasks() {
 
   const handleComplete = async (order: WorkOrder) => {
     if (!activeCompanyId) return;
-    const fs = formStates[order.id] || { comments: '', parts: [], photos: [], signature: '', dni: '', aclaracion: '' };
+    const fs = formStates[order.id] || { comments: '', parts: [], photos: [], signature: '', technicianSignature: '', dni: '', aclaracion: '' };
+
+    // Validar que ambas firmas estén presentes
+    if (!fs.signature) {
+      alert('La firma del cliente es requerida para completar esta orden.');
+      return;
+    }
+    if (!fs.technicianSignature) {
+      alert('La firma del técnico es requerida para completar esta orden.');
+      return;
+    }
 
     await supabaseDataLayer.updateWorkOrder(
       order.id,
@@ -315,8 +327,9 @@ export default function MyTasks() {
         parts_used: fs.parts.length > 0 ? fs.parts : undefined,
         photo_urls: fs.photos.length > 0 ? fs.photos : undefined,
         signature_data_url: fs.signature || undefined,
+        technician_signature_data_url: fs.technicianSignature || undefined,
         client_dni: fs.dni || undefined,
-        client_name: fs.aclaracion || undefined,
+        client_aclaracion: fs.aclaracion || undefined,
       },
       activeCompanyId
     );
@@ -339,7 +352,7 @@ export default function MyTasks() {
   const handleRevisit = async (order: WorkOrder) => {
     if (!activeCompanyId) return;
     try {
-      const fs = formStates[order.id] || { comments: '', parts: [], photos: [], signature: '', dni: '', aclaracion: '' };
+      const fs = formStates[order.id] || { comments: '', parts: [], photos: [], signature: '', technicianSignature: '', dni: '', aclaracion: '' };
 
       await supabaseDataLayer.updateWorkOrder(
         order.id,
@@ -440,7 +453,7 @@ export default function MyTasks() {
         <div className="space-y-4" ref={listRef}>
           {orders.map((order: any) => {
             const building = getBuilding(order.building_id);
-            const fs = formStates[order.id] || { comments: '', parts: [], photos: [], signature: '', dni: '', aclaracion: '' };
+            const fs = formStates[order.id] || { comments: '', parts: [], photos: [], signature: '', technicianSignature: '', dni: '', aclaracion: '' };
             const isInProgress = order.status === 'In Progress';
 
             // ✅ Teléfono: usar el de la orden o, si no está, el del edificio
@@ -591,7 +604,7 @@ export default function MyTasks() {
                         onChange={(e) =>
                           setFormStates(prev => ({
                             ...prev,
-                            [order.id]: { ...(prev[order.id] || { comments: '', parts: [], photos: [], signature: '', dni: '', aclaracion: '' }), comments: e.target.value }
+                            [order.id]: { ...(prev[order.id] || { comments: '', parts: [], photos: [], signature: '', technicianSignature: '', dni: '', aclaracion: '' }), comments: e.target.value }
                           }))
                         }
                         rows={4}
@@ -609,7 +622,7 @@ export default function MyTasks() {
                             setFormStates(prev => ({
                               ...prev,
                               [order.id]: {
-                                ...(prev[order.id] || { comments: '', parts: [], photos: [], signature: '', dni: '', aclaracion: '' }),
+                                ...(prev[order.id] || { comments: '', parts: [], photos: [], signature: '', technicianSignature: '', dni: '', aclaracion: '' }),
                                 parts: [ ...(prev[order.id]?.parts || []), { name: '', quantity: 1 } ]
                               }
                             }))
@@ -632,7 +645,7 @@ export default function MyTasks() {
                                 value={part.name}
                                 onChange={(e) => {
                                   setFormStates(prev => {
-                                    const cur = prev[order.id] || { comments: '', parts: [], photos: [], signature: '', dni: '', aclaracion: '' };
+                                    const cur = prev[order.id] || { comments: '', parts: [], photos: [], signature: '', technicianSignature: '', dni: '', aclaracion: '' };
                                     const nextParts = [...(cur.parts || [])];
                                     nextParts[index] = { ...nextParts[index], name: e.target.value };
                                     return { ...prev, [order.id]: { ...cur, parts: nextParts } };
@@ -647,7 +660,7 @@ export default function MyTasks() {
                                 onChange={(e) => {
                                   const q = parseInt(e.target.value) || 1;
                                   setFormStates(prev => {
-                                    const cur = prev[order.id] || { comments: '', parts: [], photos: [], signature: '', dni: '', aclaracion: '' };
+                                    const cur = prev[order.id] || { comments: '', parts: [], photos: [], signature: '', technicianSignature: '', dni: '', aclaracion: '' };
                                     const nextParts = [...(cur.parts || [])];
                                     nextParts[index] = { ...nextParts[index], quantity: q };
                                     return { ...prev, [order.id]: { ...cur, parts: nextParts } };
@@ -659,7 +672,7 @@ export default function MyTasks() {
                                 type="button"
                                 onClick={() => {
                                   setFormStates(prev => {
-                                    const cur = prev[order.id] || { comments: '', parts: [], photos: [], signature: '', dni: '', aclaracion: '' };
+                                    const cur = prev[order.id] || { comments: '', parts: [], photos: [], signature: '', technicianSignature: '', dni: '', aclaracion: '' };
                                     const nextParts = (cur.parts || []).filter((_, i) => i !== index);
                                     return { ...prev, [order.id]: { ...cur, parts: nextParts } };
                                   });
@@ -690,7 +703,7 @@ export default function MyTasks() {
                           }
                           if (uploads.length > 0) {
                             setFormStates(prev => {
-                              const cur = prev[order.id] || { comments: '', parts: [], photos: [], signature: '', dni: '', aclaracion: '' };
+                              const cur = prev[order.id] || { comments: '', parts: [], photos: [], signature: '', technicianSignature: '', dni: '', aclaracion: '' };
                               return { ...prev, [order.id]: { ...cur, photos: [...(cur.photos || []), ...uploads] } };
                             });
                           }
@@ -720,7 +733,7 @@ export default function MyTasks() {
                                 type="button"
                                 onClick={() =>
                                   setFormStates(prev => {
-                                    const cur = prev[order.id] || { comments: '', parts: [], photos: [], signature: '', dni: '', aclaracion: '' };
+                                    const cur = prev[order.id] || { comments: '', parts: [], photos: [], signature: '', technicianSignature: '', dni: '', aclaracion: '' };
                                     const nextPhotos = (cur.photos || []).filter((_, i) => i !== index);
                                     return { ...prev, [order.id]: { ...cur, photos: nextPhotos } };
                                   })
@@ -740,7 +753,7 @@ export default function MyTasks() {
                       <SignaturePad
                         onSave={(sig) =>
                           setFormStates(prev => {
-                            const cur = prev[order.id] || { comments: '', parts: [], photos: [], signature: '', dni: '', aclaracion: '' };
+                            const cur = prev[order.id] || { comments: '', parts: [], photos: [], signature: '', technicianSignature: '', dni: '', aclaracion: '' };
                             return { ...prev, [order.id]: { ...cur, signature: sig } };
                           })
                         }
@@ -755,7 +768,7 @@ export default function MyTasks() {
                             value={fs.dni}
                             onChange={(e) =>
                               setFormStates(prev => {
-                                const cur = prev[order.id] || { comments: '', parts: [], photos: [], signature: '', dni: '', aclaracion: '' };
+                                const cur = prev[order.id] || { comments: '', parts: [], photos: [], signature: '', technicianSignature: '', dni: '', aclaracion: '' };
                                 return { ...prev, [order.id]: { ...cur, dni: e.target.value } };
                               })
                             }
@@ -770,7 +783,7 @@ export default function MyTasks() {
                             value={fs.aclaracion}
                             onChange={(e) =>
                               setFormStates(prev => {
-                                const cur = prev[order.id] || { comments: '', parts: [], photos: [], signature: '', dni: '', aclaracion: '' };
+                                const cur = prev[order.id] || { comments: '', parts: [], photos: [], signature: '', technicianSignature: '', dni: '', aclaracion: '' };
                                 return { ...prev, [order.id]: { ...cur, aclaracion: e.target.value } };
                               })
                             }
@@ -779,6 +792,19 @@ export default function MyTasks() {
                           />
                         </div>
                       </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[#694e35] font-bold mb-2">Firma del Técnico</label>
+                      <SignaturePad
+                        onSave={(sig) =>
+                          setFormStates(prev => {
+                            const cur = prev[order.id] || { comments: '', parts: [], photos: [], signature: '', technicianSignature: '', dni: '', aclaracion: '' };
+                            return { ...prev, [order.id]: { ...cur, technicianSignature: sig } };
+                          })
+                        }
+                        initialSignature={fs.technicianSignature}
+                      />
                     </div>
 
                     <div className="flex flex-wrap gap-3 pt-4 border-t border-[#d4caaf]">
