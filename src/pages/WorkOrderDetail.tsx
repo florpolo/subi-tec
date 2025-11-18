@@ -10,8 +10,7 @@ import {
   Equipment
 } from '../lib/dataLayer';
 import { ArrowLeft, FileText, Paperclip, Package, History, Edit, CheckCircle } from 'lucide-react';
-import { generateRemitoPdf } from '../lib/RemitoGenerator';
-import { supabaseDataLayer } from '../lib/supabaseDataLayer';
+import { downloadRemito } from '../lib/RemitoGenerator';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function WorkOrderDetail() {
@@ -27,7 +26,7 @@ export default function WorkOrderDetail() {
   const [elevatorHistory, setElevatorHistory] = useState<ElevatorHistory[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'attachments' | 'parts' | 'history'>('overview');
   const [error, setError] = useState<string | null>(null);
-  const [loadingRemito, setLoadingRemito] = useState(false);
+  const [downloadingRemito, setDownloadingRemito] = useState(false);
   const [completingTask, setCompletingTask] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -67,74 +66,52 @@ export default function WorkOrderDetail() {
     }
   }, [id, navigate]);
 
-  const handleDownloadRemito = async () => {
-    if (!order || !companyId) return;
-    setLoadingRemito(true);
+  const handleDownloadRemito = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    if (!order || !companyId) {
+      console.log("[Remito] Missing order or companyId", { order: !!order, companyId: !!companyId });
+      return;
+    }
+
+    setDownloadingRemito(true);
     try {
-      if (order.status !== 'Completed') {
-        throw new Error('Only completed orders can generate a remito.');
-      }
-      if (!order.finishTime) {
-        throw new Error('Missing finish date/time.');
-      }
-      if (!order.buildingId) {
-        throw new Error('Missing building.');
-      }
+      console.log("[Remito] CLICK", { companyId, workOrderId: order.id });
+      alert("click OK");
 
-      const building = await supabaseDataLayer.getBuilding(order.buildingId, companyId);
-      if (!building?.address) {
-        throw new Error('Building address not found.');
-      }
-
-      const remitoNumber = await supabaseDataLayer.getNextRemitoNumber(companyId);
-
-      const payload = {
-        number8d: remitoNumber,
-        fechaDDMMYYYY: new Date(order.finishTime).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-        domicilio: building.address,
-        descripcion: (order.comments ?? '').trim(),
-        firmaDataUrl: order.signatureDataUrl ?? undefined,
-      };
-
-      const pdfBytes = await generateRemitoPdf(payload);
-      const pdfBlob = new Blob([pdfBytes], { type: 'application/pdf' });
-
-      const publicUrl = await supabaseDataLayer.uploadRemitoPdf(pdfBlob, companyId, order.id, remitoNumber);
-      if (!publicUrl) {
-        throw new Error('Failed to upload remito PDF.');
-      }
-
-      await supabaseDataLayer.upsertRemitoRecord(companyId, order.id, remitoNumber, publicUrl);
-
-      const a = document.createElement('a');
-      a.href = publicUrl;
-      a.download = `remito_${remitoNumber}.pdf`;
+      // sanity: test trivial download (debug)
+      const blob = new Blob(["TEST"], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "test.txt";
       document.body.appendChild(a);
       a.click();
       a.remove();
+      URL.revokeObjectURL(url);
 
+      console.log("[Remito] calling real downloader…");
+      await downloadRemito(companyId, order.id);
     } catch (err) {
-      console.error('Error in handleDownloadRemito:', err);
-      alert((err as Error).message || 'Error generating remito.');
+      console.error("[Remito] BUTTON ERROR", err);
+      alert(`Button error: ${(err as any)?.message || String(err)}`);
     } finally {
-      setLoadingRemito(false);
+      setDownloadingRemito(false);
     }
   };
 
   const handleCompleteTask = async () => {
-    if (!order || !companyId || !user?.id) {
-      alert('Missing order, company ID, or user information.');
+    if (!order) {
+      alert('Missing order.');
       return;
     }
 
     if (order.status === 'Completed') {
       alert('Esta orden de trabajo ya está completada.');
       return;
-    }
-
-    if (order.technicianId && technician && technician.user_id && technician.user_id !== user.id) {
-        alert('No estás autorizado para completar esta orden de trabajo.');
-        return;
     }
 
     if (!order.signatureDataUrl) {
@@ -150,30 +127,30 @@ export default function WorkOrderDetail() {
     const originalOrder = { ...order };
 
     try {
-      setOrder(prevOrder => prevOrder ? {
-        ...prevOrder,
+      // Optimistic UI
+      const optimistic: WorkOrder = {
+        ...order,
         status: 'Completed',
         finishTime: new Date().toISOString(),
-      } : null);
+      };
+      setOrder(optimistic);
 
-      const updatedOrder = await supabaseDataLayer.completeWorkOrder(
-        order.id,
-        companyId,
-        {
-          comments: order.comments,
-          partsUsed: order.partsUsed,
-          photoUrls: order.photoUrls,
-          signatureDataUrl: order.signatureDataUrl,
-        }
-      );
+      // Persistir con la capa pública (dataLayer)
+      const updatedOrder = await dataLayer.updateWorkOrder(order.id, {
+        status: 'Completed',
+        finishTime: new Date().toISOString(),
+        comments: order.comments,
+        partsUsed: order.partsUsed,
+        photoUrls: order.photoUrls,
+        signatureDataUrl: order.signatureDataUrl,
+      });
 
-      if (updatedOrder) {
-        setOrder(updatedOrder); 
-        alert('¡Orden de trabajo marcada como Completada!');
-      } else {
+      if (!updatedOrder) {
         throw new Error('Failed to receive updated work order from server.');
       }
 
+      setOrder(updatedOrder);
+      alert('¡Orden de trabajo marcada como Completada!');
     } catch (err) {
       console.error('Error completing task:', err);
       setOrder(originalOrder);
@@ -182,7 +159,6 @@ export default function WorkOrderDetail() {
       setCompletingTask(false);
     }
   };
-
 
   useEffect(() => {
     loadData();
@@ -195,7 +171,6 @@ export default function WorkOrderDetail() {
       </div>
     );
   }
-
 
   const getStatusLabel = (status: string) => {
     switch (status) {
@@ -302,29 +277,33 @@ export default function WorkOrderDetail() {
             >
               <Edit size={18} />
               Editar
-            </Link>            
-            {order.status !== 'Completed' && ( // Only show if not completed
-                <button
-                  onClick={handleCompleteTask}
-                  disabled={completingTask}
-                  className="inline-flex items-center gap-2 rounded-lg bg-green-500 px-4 py-2 font-bold text-white hover:bg-green-600 disabled:opacity-60"
-                >
-                  <CheckCircle size={18} />
-                  {completingTask ? 'Completando...' : 'Completar Tarea'}
-                </button>
+            </Link>
+
+            {order.status !== 'Completed' && (
+              <button
+                onClick={handleCompleteTask}
+                disabled={completingTask}
+                className="inline-flex items-center gap-2 rounded-lg bg-green-500 px-4 py-2 font-bold text-white hover:bg-green-600 disabled:opacity-60"
+              >
+                <CheckCircle size={18} />
+                {completingTask ? 'Completando...' : 'Completar Tarea'}
+              </button>
             )}
 
             {order.status === 'Completed' && (
-                <button
-                  onClick={handleDownloadRemito}
-                  disabled={loadingRemito}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[#fcca53] px-4 py-2 font-bold text-[#694e35] hover:bg-[#ffe5a5] disabled:opacity-60"
-                >
-                  {loadingRemito ? 'Generando remito...' : 'Descargar Remito'}
-                </button>
-              )}
-            </div>
+              <button
+                id="download-remito"
+                type="button"
+                onClick={handleDownloadRemito}
+                disabled={downloadingRemito}
+                className="inline-flex items-center gap-2 rounded-lg bg-[#fcca53] px-4 py-2 font-bold text-[#694e35] hover:bg-[#ffe5a5] disabled:opacity-60"
+                title={downloadingRemito ? "Generando remito..." : "Descargar Remito"}
+              >
+                {downloadingRemito ? 'Generando remito...' : 'Descargar Remito'}
+              </button>
+            )}
           </div>
+        </div>
 
         {/* Tabs */}
         <div className="border-b border-[#d4caaf] mb-6">
@@ -348,8 +327,6 @@ export default function WorkOrderDetail() {
             })}
           </div>
         </div>
-
-
 
         {/* ===== Contenido por tab ===== */}
         {activeTab === 'overview' && (
@@ -455,7 +432,7 @@ export default function WorkOrderDetail() {
                   {order.startTime && (
                     <div>
                       <span className="text-[#5e4c1e]">Iniciada:</span>{' '}
-                      <span className="font-medium text-[#694e35]">
+                      <span className="font-medium text-[#694e35]}>
                         {new Date(order.startTime).toLocaleString('es-AR', {
                           day: '2-digit',
                           month: '2-digit',
@@ -469,7 +446,7 @@ export default function WorkOrderDetail() {
                   {order.finishTime && (
                     <div>
                       <span className="text-[#5e4c1e]">Finalizada:</span>{' '}
-                      <span className="font-medium text-[#694e35]">
+                      <span className="font-medium text-[#694e35]}>
                         {new Date(order.finishTime).toLocaleString('es-AR', {
                           day: '2-digit',
                           month: '2-digit',
