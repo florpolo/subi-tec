@@ -26,7 +26,6 @@ export interface Elevator {
   capacity: number;
   machine_room_location: string;
   control_type: string;
-  plate_number?: string;
   created_at?: string;
 }
 
@@ -78,25 +77,25 @@ export interface ElevatorHistory {
 
 /** ===== Equipos ===== */
 export type EquipmentType =
-  | 'elevator'          // Ascensor
-  | 'water_pump'        // Bomba de agua
-  | 'freight_elevator'  // Montacarga
-  | 'car_lift'          // Montacoche
-  | 'dumbwaiter'        // Montaplatos
-  | 'camillero'         // Camillero
-  | 'other';            // Otro
+  | 'elevator'
+  | 'water_pump'
+  | 'freight_elevator'
+  | 'car_lift'
+  | 'dumbwaiter'
+  | 'camillero'
+  | 'other';
 
 export interface Equipment {
   id: string;
   company_id: string;
   building_id: string;
   type: EquipmentType;
-  name: string;                 // p.ej. "Bomba 1", "Montacarga B"
-  location_description: string; // ubicación / descripción
+  name: string;
+  location_description: string;
   brand: string | null;
   model: string | null;
   serial_number: string | null;
-  capacity: number | null;      // libre (kg/HP/lts)
+  capacity: number | null;
   status: 'fit' | 'out_of_service';
   created_at?: string;
 }
@@ -186,7 +185,7 @@ export const supabaseDataLayer = {
   },
 
   async createElevator(elevator: Omit<Elevator, 'id' | 'created_at'>, companyId: string): Promise<Elevator | null> {
-    const payload = { ...elevator, company_id: companyId, plate_number: elevator.plate_number ?? null };
+    const payload = { ...elevator, company_id: companyId };
     const { data, error } = await supabase.from<Elevator>('elevators').insert(payload).select().maybeSingle();
     if (error) throw error;
     return data || null;
@@ -195,7 +194,7 @@ export const supabaseDataLayer = {
   async updateElevator(id: string, updates: Partial<Elevator>, companyId: string): Promise<Elevator | null> {
     const { data, error } = await supabase
       .from<Elevator>('elevators')
-      .update({ ...updates, plate_number: updates.plate_number ?? null })
+      .update(updates)
       .eq('company_id', companyId)
       .eq('id', id)
       .select()
@@ -250,9 +249,8 @@ export const supabaseDataLayer = {
     return data || null;
   },
 
-  // Estado simple: 'free' | 'busy' (conservando tu lógica)
+  // Estado simple: 'free' | 'busy'
   async getTechnicianStatus(technicianId: string, companyId: string): Promise<'free' | 'busy'> {
-    // Implementación de ejemplo: si tiene órdenes "In Progress" => 'busy'
     const { data, error } = await supabase
       .from<WorkOrder>('work_orders')
       .select('id')
@@ -261,7 +259,7 @@ export const supabaseDataLayer = {
       .eq('status', 'In Progress')
       .limit(1);
     if (error) throw error;
-    return (data && data.length > 0) ? 'busy' : 'free';
+    return data && data.length > 0 ? 'busy' : 'free';
   },
 
   /* ========== Work Orders ========== */
@@ -301,77 +299,93 @@ export const supabaseDataLayer = {
     return data || null;
   },
 
-  // >>>>>>> ÚNICO CAMBIO IMPORTANTE: sin spread, mapeo explícito + saneo de UUIDs/opcionales
-async createWorkOrder(
-  order: Omit<WorkOrder, 'id' | 'created_at'>,
-  companyId: string
-): Promise<WorkOrder | null> {
-  // helper: permite leer snake o camel sin romper lo ya existente
-  const get = (a: any, snake: string, camel: string) =>
-    (a as any)[snake] ?? (a as any)[camel];
+  // >>>>>>> createWorkOrder con mapeo explícito + saneo de opcionales
+  async createWorkOrder(
+    order: Omit<WorkOrder, 'id' | 'created_at'>,
+    companyId: string
+  ): Promise<WorkOrder | null> {
+    // helper: lee snake o camel
+    const get = (a: any, snake: string, camel: string) =>
+      (a as any)[snake] ?? (a as any)[camel];
 
-  // Armado explícito del payload (sin spread para no colar "undefined")
-  const payload: any = {
-    company_id: companyId,
+    const payload: any = {
+      company_id: companyId,
 
-    claim_type:         get(order, 'claim_type', 'claimType'),
-    corrective_type:    toNull(get(order, 'corrective_type', 'correctiveType')),
+      claim_type:         get(order, 'claim_type', 'claimType'),
+      corrective_type:    toNull(get(order, 'corrective_type', 'correctiveType')),
 
-    // OJO: acá sí camel correcto
-    building_id:        get(order, 'building_id', 'buildingId'),
+      building_id:        get(order, 'building_id', 'buildingId'),
 
-    // Saneamos SIEMPRE los UUID opcionales
-    elevator_id:        toNull(get(order, 'elevator_id', 'elevatorId')),
-    equipment_id:       toNull(get(order, 'equipment_id', 'equipmentId')),
-    technician_id:      toNull(get(order, 'technician_id', 'technicianId')),
+      elevator_id:        toNull(get(order, 'elevator_id', 'elevatorId')),
+      equipment_id:       toNull(get(order, 'equipment_id', 'equipmentId')),
+      technician_id:      toNull(get(order, 'technician_id', 'technicianId')),
 
-    contact_name:       get(order, 'contact_name', 'contactName') ?? '',
-    contact_phone:      get(order, 'contact_phone', 'contactPhone') ?? '',
+      contact_name:       get(order, 'contact_name', 'contactName') ?? '',
+      contact_phone:      get(order, 'contact_phone', 'contactPhone') ?? '',
 
-    date_time:          toNull(get(order, 'date_time', 'dateTime')),
-    description:        get(order, 'description', 'description') ?? '',
-    status:             get(order, 'status', 'status') ?? 'Pending',
-    priority:           get(order, 'priority', 'priority') ?? 'Low',
+      date_time:          toNull(get(order, 'date_time', 'dateTime')),
+      description:        get(order, 'description', 'description') ?? '',
+      status:             get(order, 'status', 'status') ?? 'Pending',
+      priority:           get(order, 'priority', 'priority') ?? 'Low',
 
-    start_time:         toNull(get(order, 'start_time', 'startTime')),
-    finish_time:        toNull(get(order, 'finish_time', 'finishTime')),
+      start_time:         toNull(get(order, 'start_time', 'startTime')),
+      finish_time:        toNull(get(order, 'finish_time', 'finishTime')),
 
-    comments:           get(order, 'comments', 'comments') ?? null,
-    parts_used:         get(order, 'parts_used', 'partsUsed') ?? null,
-    photo_urls:         get(order, 'photo_urls', 'photoUrls') ?? null,
-    signature_data_url: get(order, 'signature_data_url', 'signatureDataUrl') ?? null,
-  };
+      comments:           get(order, 'comments', 'comments') ?? null,
+      parts_used:         get(order, 'parts_used', 'partsUsed') ?? null,
+      photo_urls:         get(order, 'photo_urls', 'photoUrls') ?? null,
+      signature_data_url: get(order, 'signature_data_url', 'signatureDataUrl') ?? null,
+    };
 
-  // Guardas defensivas antes del insert
-  if (!payload.building_id) {
-    throw new Error('building_id es requerido para crear la orden');
-  }
-  if (!payload.elevator_id && !payload.equipment_id) {
-    throw new Error('Debés asignar un ascensor o un equipo a la orden');
-  }
+    if (!payload.building_id) {
+      throw new Error('building_id es requerido para crear la orden');
+    }
+    if (!payload.elevator_id && !payload.equipment_id) {
+      throw new Error('Debés asignar un ascensor o un equipo a la orden');
+    }
 
-  const { data, error } = await supabase
-    .from<WorkOrder>('work_orders')
-    .insert(payload)       // objeto único ok
-    .select()
-    .maybeSingle();
+    const { data, error } = await supabase
+      .from<WorkOrder>('work_orders')
+      .insert(payload)
+      .select()
+      .maybeSingle();
 
-  if (error) throw error;
-  return data || null;
-},
+    if (error) throw error;
+    return data || null;
+  },
 
-async updateWorkOrder(id: string, updates: Partial<WorkOrder>, companyId: string): Promise<WorkOrder | null> {
-  const { data, error } = await supabase
-    .from<WorkOrder>('work_orders')
-    .update(updates)
-    .eq('company_id', companyId)
-    .eq('id', id)
-    .select()
-    .maybeSingle();
-  if (error) throw error;
-  return data || null;
-},
+  async updateWorkOrder(
+    id: string,
+    updates: Partial<WorkOrder>,
+    companyId: string
+  ): Promise<WorkOrder | null> {
+    // Saneamos opcionales para no enviar "undefined" a columnas UUID/timestamp
+    const sanitized: any = { ...updates };
 
+    if ('elevator_id' in sanitized) sanitized.elevator_id = toNull(sanitized.elevator_id);
+    if ('equipment_id' in sanitized) sanitized.equipment_id = toNull(sanitized.equipment_id);
+    if ('technician_id' in sanitized) sanitized.technician_id = toNull(sanitized.technician_id);
+
+    if ('date_time' in sanitized) sanitized.date_time = toNull(sanitized.date_time);
+    if ('start_time' in sanitized) sanitized.start_time = toNull(sanitized.start_time);
+    if ('finish_time' in sanitized) sanitized.finish_time = toNull(sanitized.finish_time);
+
+    if ('comments' in sanitized) sanitized.comments = sanitized.comments ?? null;
+    if ('parts_used' in sanitized) sanitized.parts_used = sanitized.parts_used ?? null;
+    if ('photo_urls' in sanitized) sanitized.photo_urls = sanitized.photo_urls ?? null;
+    if ('signature_data_url' in sanitized) sanitized.signature_data_url = sanitized.signature_data_url ?? null;
+
+    const { data, error } = await supabase
+      .from<WorkOrder>('work_orders')
+      .update(sanitized)
+      .eq('company_id', companyId)
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+
+    if (error) throw error;
+    return data || null;
+  },
 
   /* ========== Elevator History ========== */
   async addElevatorHistory(
@@ -379,7 +393,11 @@ async updateWorkOrder(id: string, updates: Partial<WorkOrder>, companyId: string
     companyId: string
   ): Promise<ElevatorHistory | null> {
     const payload = { ...history, company_id: companyId };
-    const { data, error } = await supabase.from<ElevatorHistory>('elevator_history').insert(payload).select().maybeSingle();
+    const { data, error } = await supabase
+      .from<ElevatorHistory>('elevator_history')
+      .insert(payload)
+      .select()
+      .maybeSingle();
     if (error) throw error;
     return data || null;
   },
@@ -428,40 +446,6 @@ async updateWorkOrder(id: string, updates: Partial<WorkOrder>, companyId: string
     return data?.publicUrl || null;
   },
 
-  async uploadRemitoPdf(file: Blob, companyId: string, workOrderId: string, remitoNumber: string): Promise<string | null> {
-    const bucket = 'remitos';
-    const path = `${companyId}/${workOrderId}/remito_${remitoNumber}.pdf`;
-    const { error } = await supabase.storage.from(bucket).upload(path, file, {
-      cacheControl: '3600',
-      upsert: true,
-      contentType: 'application/pdf',
-    });
-    if (error) {
-      console.error('uploadRemitoPdf error', error);
-      return null;
-    }
-    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
-    return data?.publicUrl || null;
-  },
-
-  async getNextRemitoNumber(companyId: string): Promise<string> {
-    const { data, error } = await supabase.rpc('get_next_remito_no', { p_company_id: companyId });
-    if (error) throw error;
-    return data as string;
-  },
-
-  async upsertRemitoRecord(companyId: string, workOrderId: string, remitoNumber: string, fileUrl: string): Promise<void> {
-    const { error } = await supabase
-      .from('remitos')
-      .upsert({
-        company_id: companyId,
-        work_order_id: workOrderId,
-        remito_number: remitoNumber,
-        file_url: fileUrl,
-      }, { onConflict: 'work_order_id' });
-    if (error) throw error;
-  },
-
   /* ========== Equipments (CRUD) ========== */
   async listEquipments(companyId: string, buildingId?: string): Promise<Equipment[]> {
     let q = supabase.from<Equipment>('equipments').select('*').eq('company_id', companyId);
@@ -505,14 +489,4 @@ async updateWorkOrder(id: string, updates: Partial<WorkOrder>, companyId: string
     const { error } = await supabase.from<Equipment>('equipments').delete().eq('company_id', companyId).eq('id', id);
     if (error) throw error;
   },
-};
-
-export type {
-  Building as _Building,
-  Elevator as _Elevator,
-  Technician as _Technician,
-  WorkOrder as _WorkOrder,
-  ElevatorHistory as _ElevatorHistory,
-  Equipment as _Equipment,
-  EquipmentType as _EquipmentType,
 };
