@@ -11,12 +11,10 @@ import {
 } from '../lib/dataLayer';
 import { ArrowLeft, FileText, Paperclip, Package, History, Edit, CheckCircle } from 'lucide-react';
 import { downloadRemito } from '../lib/RemitoGenerator';
-import { useAuth } from '../contexts/AuthContext';
 
 export default function WorkOrderDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { companyId } = useAuth();
 
   const [order, setOrder] = useState<WorkOrder | null>(null);
   const [building, setBuilding] = useState<Building | null>(null);
@@ -67,23 +65,23 @@ export default function WorkOrderDetail() {
   }, [id, navigate]);
 
   const handleDownloadRemito = async (e?: React.MouseEvent) => {
-  if (e) {
-    e.preventDefault();
-    e.stopPropagation();
-  }
-  if (!order || !companyId) {
-    alert('Falta order o companyId');
-    return;
-  }
-  setDownloadingRemito(true);
-  try {
-    await downloadRemito(companyId, order.id);
-  } catch (err) {
-    // el error ya lo alerta RemitoGenerator
-  } finally {
-    setDownloadingRemito(false);
-  }
-};
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!order) {
+      alert('Falta order');
+      return;
+    }
+    setDownloadingRemito(true);
+    try {
+      await downloadRemito(order.id);
+    } catch (err) {
+      // el error ya lo alerta RemitoGenerator
+    } finally {
+      setDownloadingRemito(false);
+    }
+  };
 
 
   const handleCompleteTask = async () => {

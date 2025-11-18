@@ -164,11 +164,10 @@ async function loadTemplateBytes(): Promise<Uint8Array> {
   return new Uint8Array(await rRemote.arrayBuffer());
 }
 
-async function getWorkOrderAndBuilding(companyId: string, workOrderId: string) {
+async function getWorkOrderAndBuilding(workOrderId: string) {
   const { data: wo, error: e1 } = await supabase
     .from('work_orders')
     .select('*')
-    .eq('company_id', companyId)
     .eq('id', workOrderId)
     .maybeSingle();
   if (e1) throw e1;
@@ -201,17 +200,18 @@ async function getNextRemitoNumberOrFallback(companyId: string): Promise<string>
   }
 }
 
-export async function downloadRemito(companyId: string, workOrderId: string) {
+export async function downloadRemito(workOrderId: string) {
   try {
-    console.log('[Remito] start', { companyId, workOrderId });
+    console.log('[Remito] start', { workOrderId });
 
     // 1) Cargar template (local fallback remoto)
     const templateBytes = await loadTemplateBytes();
     console.log('[Remito] template bytes', templateBytes.byteLength);
 
-    // 2) Traer orden + edificio
-    const { wo, building } = await getWorkOrderAndBuilding(companyId, workOrderId);
-    console.log('[Remito] wo/building OK', { finish_time: wo.finish_time });
+    // 2) Traer orden + edificio (derivamos companyId de la orden)
+    const { wo, building } = await getWorkOrderAndBuilding(workOrderId);
+    const companyId = wo.company_id;
+    console.log('[Remito] wo/building OK', { companyId, finish_time: wo.finish_time });
 
     // 3) Numerador (o fallback)
     const remitoNumber = await getNextRemitoNumberOrFallback(companyId);
