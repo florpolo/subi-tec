@@ -62,6 +62,9 @@ export interface WorkOrder {
   parts_used?: Array<{ name: string; quantity: number }> | null;
   photo_urls?: string[] | null;
   signature_data_url?: string | null;
+  technician_signature_data_url?: string | null;
+  client_dni?: string | null;
+  client_aclaracion?: string | null;
 }
 
 export interface ElevatorHistory {

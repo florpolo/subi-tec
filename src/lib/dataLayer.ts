@@ -67,6 +67,9 @@ export interface WorkOrder {
   partsUsed?: Array<{ name: string; quantity: number }>;
   photoUrls?: string[];
   signatureDataUrl?: string;
+  technicianSignatureDataUrl?: string;
+  clientDni?: string;
+  clientAclaracion?: string;
 }
 
 export interface ElevatorHistory {
@@ -162,6 +165,9 @@ function mapWorkOrder(w: SupabaseWorkOrder): WorkOrder {
     partsUsed: w.parts_used ?? undefined,
     photoUrls: w.photo_urls ?? undefined,
     signatureDataUrl: w.signature_data_url ?? undefined,
+    technicianSignatureDataUrl: w.technician_signature_data_url ?? undefined,
+    clientDni: w.client_dni ?? undefined,
+    clientAclaracion: w.client_aclaracion ?? undefined,
   };
 }
 
@@ -411,6 +417,9 @@ export function createDataLayer(companyId: string) {
       if (updates.partsUsed !== undefined) mappedUpdates.parts_used = updates.partsUsed ?? null;
       if (updates.photoUrls !== undefined) mappedUpdates.photo_urls = updates.photoUrls ?? null;
       if (updates.signatureDataUrl !== undefined) mappedUpdates.signature_data_url = updates.signatureDataUrl ?? null;
+      if (updates.technicianSignatureDataUrl !== undefined) mappedUpdates.technician_signature_data_url = updates.technicianSignatureDataUrl ?? null;
+      if (updates.clientDni !== undefined) mappedUpdates.client_dni = updates.clientDni ?? null;
+      if (updates.clientAclaracion !== undefined) mappedUpdates.client_aclaracion = updates.clientAclaracion ?? null;
 
       const result = await supabaseDataLayer.updateWorkOrder(id, mappedUpdates, companyId);
       return result ? mapWorkOrder(result) : null;

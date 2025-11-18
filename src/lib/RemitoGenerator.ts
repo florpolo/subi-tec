@@ -7,14 +7,16 @@ const STORAGE_BUCKET = 'remitos';
 const TEMPLATE_KEY = 'REMITO TEMPLATE pdf.pdf';
 
 const ANCHORS_PT = {
-  // Caja donde centramos la imagen de la firma
+  // Caja donde centramos la imagen de la firma del cliente (FIRMA CONFORME)
   FIRMA_BOX: { x: 376.3, y: 109.65, w: 187.0, h: 82.0 },
 
+  // Caja donde centramos la imagen de la firma del técnico (FIRMA TÉCNICO)
+  FIRMA_TECNICO_BOX: { x: 30.0, y: 109.65, w: 187.0, h: 82.0 },
+
   // Texto domicilio (línea única con autoscale)
-DOMICILIO: { x: 150, y: 659.0, maxW: 430 },
+  DOMICILIO: { x: 150, y: 659.0, maxW: 430 },
 
-
-  // Párrafo “Certifico que…”
+  // Párrafo "Certifico que…"
   DESC_START: { x: 134.9, y: 560.9, maxW: 491.25, lineH: 16.5, maxLines: 10 },
 
   // N°
@@ -22,6 +24,9 @@ DOMICILIO: { x: 150, y: 659.0, maxW: 430 },
 
   // FECHA
   FECHA: { x: 404.9, y: 730.0, maxW: 165.0 },
+
+  // Aclaración del cliente (texto en línea)
+  ACLARACION: { x: 376.3, y: 75.0, maxW: 187.0 },
 } as const;
 
 const baselineFix = (size = 12) => size * 0.35;
@@ -259,6 +264,26 @@ export async function downloadRemito(workOrderId: string) {
       await drawSignature(page, pdf, wo.signature_data_url, ANCHORS_PT.FIRMA_BOX);
     } else {
       console.warn('[Remito] Missing signature_data_url');
+    }
+
+    // Firma del técnico (en FIRMA TÉCNICO)
+    if (wo.technician_signature_data_url) {
+      await drawSignature(page, pdf, wo.technician_signature_data_url, ANCHORS_PT.FIRMA_TECNICO_BOX);
+    } else {
+      console.warn('[Remito] Missing technician_signature_data_url');
+    }
+
+    // Aclaración del cliente (texto)
+    if (wo.client_aclaracion) {
+      drawText(
+        page,
+        font,
+        wo.client_aclaracion,
+        ANCHORS_PT.ACLARACION.x,
+        ANCHORS_PT.ACLARACION.y,
+        ANCHORS_PT.ACLARACION.maxW,
+        10
+      );
     }
 
     const bytes = await pdf.save();

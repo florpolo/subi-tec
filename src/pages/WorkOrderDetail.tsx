@@ -11,6 +11,7 @@ import {
 } from '../lib/dataLayer';
 import { ArrowLeft, FileText, Paperclip, Package, History, Edit, CheckCircle } from 'lucide-react';
 import { downloadRemito } from '../lib/RemitoGenerator';
+import SignaturePad from '../components/SignaturePad';
 
 export default function WorkOrderDetail() {
   const { id } = useParams<{ id: string }>();
@@ -26,6 +27,9 @@ export default function WorkOrderDetail() {
   const [error, setError] = useState<string | null>(null);
   const [downloadingRemito, setDownloadingRemito] = useState(false);
   const [completingTask, setCompletingTask] = useState(false);
+  const [technicianSignature, setTechnicianSignature] = useState<string>('');
+  const [clientDni, setClientDni] = useState<string>('');
+  const [clientAclaracion, setClientAclaracion] = useState<string>('');
 
   const loadData = useCallback(async () => {
     try {
@@ -100,6 +104,11 @@ export default function WorkOrderDetail() {
       return;
     }
 
+    if (!technicianSignature) {
+      alert('La firma del técnico es requerida para completar esta orden de trabajo.');
+      return;
+    }
+
     if (!window.confirm('¿Marcar esta orden de trabajo como Completada?')) {
       return;
     }
@@ -124,6 +133,9 @@ export default function WorkOrderDetail() {
         partsUsed: order.partsUsed,
         photoUrls: order.photoUrls,
         signatureDataUrl: order.signatureDataUrl,
+        technicianSignatureDataUrl: technicianSignature,
+        clientDni: clientDni || undefined,
+        clientAclaracion: clientAclaracion || undefined,
       });
 
       if (!updatedOrder) {
@@ -260,7 +272,7 @@ export default function WorkOrderDetail() {
               Editar
             </Link>
 
-            {order.status !== 'Completed' && (
+            {order.status === 'In Progress' && (
               <button
                 onClick={handleCompleteTask}
                 disabled={completingTask}
@@ -452,6 +464,50 @@ export default function WorkOrderDetail() {
               </div>
             )}
 
+            {order.status === 'In Progress' && (
+              <div className="space-y-6 bg-yellow-50 p-6 rounded-lg border-2 border-yellow-200">
+                <h3 className="font-bold text-[#694e35] text-lg">Completar Tarea</h3>
+
+                <div>
+                  <label className="block font-medium text-[#694e35] mb-2">
+                    Firma del Técnico *
+                  </label>
+                  <SignaturePad
+                    onSave={setTechnicianSignature}
+                    initialSignature={technicianSignature}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block font-medium text-[#694e35] mb-2">
+                      DNI del Cliente
+                    </label>
+                    <input
+                      type="text"
+                      value={clientDni}
+                      onChange={(e) => setClientDni(e.target.value)}
+                      placeholder="Ej: 12345678"
+                      className="w-full px-3 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-[#694e35] mb-2">
+                      Aclaración del Cliente
+                    </label>
+                    <input
+                      type="text"
+                      value={clientAclaracion}
+                      onChange={(e) => setClientAclaracion(e.target.value)}
+                      placeholder="Nombre legible"
+                      className="w-full px-3 py-2 border-2 border-[#d4caaf] rounded-lg focus:outline-none focus:ring-2 focus:ring-[#fcca53]"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
             {order.signatureDataUrl && (
               <div>
                 <h3 className="font-bold text-[#694e35] mb-3">Firma del Cliente</h3>
@@ -460,6 +516,37 @@ export default function WorkOrderDetail() {
                   alt="Firma del cliente"
                   className="border-2 border-[#d4caaf] rounded-lg bg-white max-w-md"
                 />
+              </div>
+            )}
+
+            {order.technicianSignatureDataUrl && (
+              <div>
+                <h3 className="font-bold text-[#694e35] mb-3">Firma del Técnico</h3>
+                <img
+                  src={order.technicianSignatureDataUrl}
+                  alt="Firma del técnico"
+                  className="border-2 border-[#d4caaf] rounded-lg bg-white max-w-md"
+                />
+              </div>
+            )}
+
+            {(order.clientDni || order.clientAclaracion) && (
+              <div>
+                <h3 className="font-bold text-[#694e35] mb-3">Información del Cliente</h3>
+                <div className="bg-white p-4 rounded-lg border border-[#d4caaf] space-y-2">
+                  {order.clientDni && (
+                    <div>
+                      <span className="text-[#5e4c1e]">DNI:</span>{' '}
+                      <span className="font-medium text-[#694e35]">{order.clientDni}</span>
+                    </div>
+                  )}
+                  {order.clientAclaracion && (
+                    <div>
+                      <span className="text-[#5e4c1e]">Aclaración:</span>{' '}
+                      <span className="font-medium text-[#694e35]">{order.clientAclaracion}</span>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
