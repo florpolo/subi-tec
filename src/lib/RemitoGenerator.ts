@@ -17,8 +17,8 @@ const ANCHORS_PT = {
   DOMICILIO: { x: 150, y: 659.0, maxW: 430 },
 
   // Párrafo "Certifico que…"
-// -20 pt a la izquierda
-DESC_START: { x: 114.9, y: 560.9, maxW: 511.25, lineH: 16.5, maxLines: 10 },
+
+DESC_START: { x: 74.9, y: 560.9, maxW: 551.25, lineH: 16.5, maxLines: 10 }
 
   // N°
   NUMERO: { x: 379.0, y: 765.5, maxW: 112.5 },
