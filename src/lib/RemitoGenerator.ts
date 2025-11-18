@@ -2,12 +2,9 @@
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { supabase } from './supabase';
 
-// 1) Primero intentamos el template local servido por Vite/Bolt
-const LOCAL_TEMPLATE_URL = '/remito-template.pdf';
-
-// 2) Fallback: el link público (solo si lo local falla)
-const REMOTE_TEMPLATE_URL =
-  'https://qoxmccvysxjvraqchlhy.supabase.co/storage/v1/object/public/remitos/REMITO%20TEMPLATE%20pdf.pdf';
+// Supabase Storage bucket y path del template
+const STORAGE_BUCKET = 'remitos';
+const TEMPLATE_KEY = 'REMITO TEMPLATE pdf.pdf';
 
 const ANCHORS_PT = {
   // Caja donde centramos la imagen de la firma
@@ -148,20 +145,18 @@ async function drawSignature(
   page.drawImage(img, { x: dx, y: dy, width: dw, height: dh });
 }
 
-async function loadTemplateBytes(): Promise<Uint8Array> {
-  // Intento 1: estático local (misma origin, sin CORS)
-  try {
-    const rLocal = await fetch(LOCAL_TEMPLATE_URL, { cache: 'no-store' });
-    if (rLocal.ok) return new Uint8Array(await rLocal.arrayBuffer());
-    console.warn('[Remito] local template failed:', rLocal.status);
-  } catch (e) {
-    console.warn('[Remito] local template fetch error:', e);
-  }
+async function getTemplateBytes(): Promise<Uint8Array> {
+  const { data, error } = await supabase
+    .storage
+    .from(STORAGE_BUCKET)
+    .download(TEMPLATE_KEY);
 
-  // Intento 2: remoto (Supabase público)
-  const rRemote = await fetch(REMOTE_TEMPLATE_URL, { mode: 'cors', cache: 'no-store' });
-  if (!rRemote.ok) throw new Error(`Template fetch failed: ${rRemote.status}`);
-  return new Uint8Array(await rRemote.arrayBuffer());
+  if (error) throw new Error(`[Remito] template download failed: ${error.message}`);
+  const ab = await data.arrayBuffer();
+  // debug: first bytes should start with "%PDF-"
+  const bytes = new Uint8Array(ab);
+  console.log('[Remito] template bytes first 5', bytes.slice(0, 5));
+  return bytes;
 }
 
 async function getWorkOrderAndBuilding(workOrderId: string) {
@@ -204,8 +199,8 @@ export async function downloadRemito(workOrderId: string) {
   try {
     console.log('[Remito] start', { workOrderId });
 
-    // 1) Cargar template (local fallback remoto)
-    const templateBytes = await loadTemplateBytes();
+    // 1) Cargar template desde Supabase Storage
+    const templateBytes = await getTemplateBytes();
     console.log('[Remito] template bytes', templateBytes.byteLength);
 
     // 2) Traer orden + edificio (derivamos companyId de la orden)
