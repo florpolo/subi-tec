@@ -428,7 +428,7 @@ export const supabaseDataLayer = {
     const { data } = supabase.storage.from(bucket).getPublicUrl(path);
     return data?.publicUrl || null;
   },
-
+ 
   async uploadSignature(dataUrl: string, companyId: string, workOrderId: string): Promise<string | null> {
     const bucket = 'work-order-signatures';
     const path = `${companyId}/${workOrderId}/signature_${Date.now()}.png`;
