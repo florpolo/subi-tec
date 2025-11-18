@@ -16,9 +16,8 @@ const ANCHORS_PT = {
   // Texto domicilio (línea única con autoscale)
   DOMICILIO: { x: 150, y: 659.0, maxW: 430 },
 
-  // Párrafo "Certifico que…"
-
-DESC_START: { x: 74.9, y: 560.9, maxW: 551.25, lineH: 16.5, maxLines: 10 },
+  // Párrafo "Certifico que…"  ⟵ (ajustado para no desbordar)
+  DESC_START: { x: 130, y: 560.9, maxW: 420, lineH: 16, maxLines: 10 },
 
   // N°
   NUMERO: { x: 379.0, y: 765.5, maxW: 112.5 },
@@ -65,49 +64,45 @@ function drawText(
   });
 }
 
-function drawWrapped(opts: {
-  page: any;
-  font: any;
-  text: string;
-  x: number;
-  y: number;
-  maxW: number;
-  lineH?: number;
-  size?: number;
-  maxLines?: number;
-}) {
-  const {
-    page,
-    font,
-    text,
-    x,
-    y,
-    maxW,
-    lineH = 16.5,
-    size = 12,
-    maxLines = 10,
-  } = opts;
-
+// ⇣ NUEVO: envoltorio acotado que nunca se pasa de maxW (y reduce fuente si hay palabras enormes)
+function drawWrappedBounded(
+  page: any,
+  font: any,
+  text: string,
+  x: number,
+  y: number,
+  maxW: number,
+  lineH = 16,
+  size = 12,
+  maxLines = 10
+) {
   const words = (text || '').split(/\s+/);
   let line = '';
   let lines = 0;
   let yCur = y - baselineFix(size);
 
+  const fits = (t: string, s: number) => font.widthOfTextAtSize(t, s) <= maxW;
+
   for (const w of words) {
     const t = line ? `${line} ${w}` : w;
-    if (font.widthOfTextAtSize(t, size) <= maxW) {
+    if (fits(t, size)) {
       line = t;
-    } else {
-      if (line) {
-        page.drawText(line, { x, y: yCur, size, font, color: rgb(0, 0, 0) });
-        lines += 1;
-        if (lines >= maxLines) return;
-        yCur -= lineH;
-      }
-      line = w;
+      continue;
     }
+    // Si la palabra sola no entra, reducimos tamaño hasta 9pt
+    if (!line) {
+      let s = size;
+      while (s > 9 && !fits(w, s)) s -= 0.5;
+      page.drawText(w, { x, y: yCur, size: s, font, color: rgb(0, 0, 0) });
+    } else {
+      page.drawText(line, { x, y: yCur, size, font, color: rgb(0, 0, 0) });
+      line = w; // arranca nueva línea con la que no entró
+    }
+    lines += 1;
+    if (lines >= maxLines) return;
+    yCur -= lineH;
   }
-  if (line) {
+  if (line && lines < maxLines) {
     page.drawText(line, { x, y: yCur, size, font, color: rgb(0, 0, 0) });
   }
 }
@@ -124,7 +119,6 @@ async function drawSignature(
   let isPng = true;
 
   if (dataUrlOrHttpUrl.startsWith('data:')) {
-    // data URL
     const metaEnd = dataUrlOrHttpUrl.indexOf(',');
     const meta = dataUrlOrHttpUrl.slice(0, metaEnd);
     const b64 = dataUrlOrHttpUrl.slice(metaEnd + 1);
@@ -134,7 +128,6 @@ async function drawSignature(
     for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
     imgBytes = arr;
   } else {
-    // URL (firma subida a Supabase u otra CDN)
     const resp = await fetch(dataUrlOrHttpUrl, { mode: 'cors', cache: 'no-store' });
     if (!resp.ok) throw new Error(`Signature fetch failed: ${resp.status}`);
     const ab = await resp.arrayBuffer();
@@ -153,16 +146,11 @@ async function drawSignature(
 }
 
 async function getTemplateBytes(): Promise<Uint8Array> {
-  const { data, error } = await supabase
-    .storage
-    .from(STORAGE_BUCKET)
-    .download(TEMPLATE_KEY);
-
+  const { data, error } = await supabase.storage.from(STORAGE_BUCKET).download(TEMPLATE_KEY);
   if (error) throw new Error(`[Remito] template download failed: ${error.message}`);
   const ab = await data.arrayBuffer();
-  // debug: first bytes should start with "%PDF-"
   const bytes = new Uint8Array(ab);
-  console.log('[Remito] template bytes first 5', bytes.slice(0, 5));
+  console.log('[Remito] template bytes first 5', bytes.slice(0, 5)); // debería empezar con %PDF-
   return bytes;
 }
 
@@ -196,8 +184,7 @@ async function getNextRemitoNumberOrFallback(companyId: string): Promise<string>
     return String(n).padStart(8, '0');
   } catch (e) {
     console.warn('[Remito] RPC get_next_remito_no failed, using fallback:', e);
-    // Fallback local si el RPC no existe o falla (evita que "no pase nada" en Bolt)
-    const ts = Date.now() % 10_000_000; // 7 dígitos máx.
+    const ts = Date.now() % 10_000_000; // fallback local
     return String(ts).padStart(8, '0');
   }
 }
@@ -206,16 +193,16 @@ export async function downloadRemito(workOrderId: string) {
   try {
     console.log('[Remito] start', { workOrderId });
 
-    // 1) Cargar template desde Supabase Storage
+    // 1) Template
     const templateBytes = await getTemplateBytes();
     console.log('[Remito] template bytes', templateBytes.byteLength);
 
-    // 2) Traer orden + edificio (derivamos companyId de la orden)
+    // 2) Orden + edificio
     const { wo, building } = await getWorkOrderAndBuilding(workOrderId);
     const companyId = wo.company_id;
     console.log('[Remito] wo/building OK', { companyId, finish_time: wo.finish_time });
 
-    // 3) Numerador (o fallback)
+    // 3) Numerador
     const remitoNumber = await getNextRemitoNumberOrFallback(companyId);
     console.log('[Remito] number', remitoNumber);
 
@@ -227,54 +214,39 @@ export async function downloadRemito(workOrderId: string) {
     // N°
     drawText(page, font, remitoNumber, ANCHORS_PT.NUMERO.x, ANCHORS_PT.NUMERO.y, ANCHORS_PT.NUMERO.maxW);
 
-    // FECHA (DD/MM/YYYY)
-    drawText(
+    // FECHA
+    drawText(page, font, ddmmyyyy(wo.finish_time), ANCHORS_PT.FECHA.x, ANCHORS_PT.FECHA.y, ANCHORS_PT.FECHA.maxW);
+
+    // DOMICILIO
+    drawText(page, font, building.address || '', ANCHORS_PT.DOMICILIO.x, ANCHORS_PT.DOMICILIO.y, ANCHORS_PT.DOMICILIO.maxW);
+
+    // DESCRIPCIÓN (bounded)
+    drawWrappedBounded(
       page,
       font,
-      ddmmyyyy(wo.finish_time),
-      ANCHORS_PT.FECHA.x,
-      ANCHORS_PT.FECHA.y,
-      ANCHORS_PT.FECHA.maxW
+      wo.comments || '',
+      ANCHORS_PT.DESC_START.x,
+      ANCHORS_PT.DESC_START.y,
+      ANCHORS_PT.DESC_START.maxW,
+      ANCHORS_PT.DESC_START.lineH,
+      12,
+      ANCHORS_PT.DESC_START.maxLines
     );
 
-    // DOMICILIO (address del building)
-    drawText(
-      page,
-      font,
-      building.address || '',
-      ANCHORS_PT.DOMICILIO.x,
-      ANCHORS_PT.DOMICILIO.y,
-      ANCHORS_PT.DOMICILIO.maxW
-    );
-
-    // Descripción / comentarios (certifico…)
-    drawWrapped({
-      page,
-      font,
-      text: wo.comments || '',
-      x: ANCHORS_PT.DESC_START.x,
-      y: ANCHORS_PT.DESC_START.y,
-      maxW: ANCHORS_PT.DESC_START.maxW,
-      lineH: ANCHORS_PT.DESC_START.lineH,
-      size: 12,
-      maxLines: ANCHORS_PT.DESC_START.maxLines,
-    });
-
-    // Firma del cliente (en FIRMA CONFORME)
+    // Firmas
     if (wo.signature_data_url) {
       await drawSignature(page, pdf, wo.signature_data_url, ANCHORS_PT.FIRMA_BOX);
     } else {
       console.warn('[Remito] Missing signature_data_url');
     }
 
-    // Firma del técnico (en FIRMA TÉCNICO)
     if (wo.technician_signature_data_url) {
       await drawSignature(page, pdf, wo.technician_signature_data_url, ANCHORS_PT.FIRMA_TECNICO_BOX);
     } else {
       console.warn('[Remito] Missing technician_signature_data_url');
     }
 
-    // Aclaración del cliente (texto)
+    // Aclaración
     if (wo.client_aclaracion) {
       drawText(
         page,
@@ -290,7 +262,7 @@ export async function downloadRemito(workOrderId: string) {
     const bytes = await pdf.save();
     console.log('[Remito] bytes', bytes.byteLength);
 
-    // 4.5) Log a DB (no bloquea descarga si falla)
+    // 4.5) Log a DB (no bloquea la descarga)
     try {
       await supabase.from('remitos').insert({
         company_id: companyId,
