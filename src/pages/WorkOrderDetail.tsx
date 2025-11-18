@@ -67,41 +67,24 @@ export default function WorkOrderDetail() {
   }, [id, navigate]);
 
   const handleDownloadRemito = async (e?: React.MouseEvent) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  if (!order || !companyId) {
+    alert('Falta order o companyId');
+    return;
+  }
+  setDownloadingRemito(true);
+  try {
+    await downloadRemito(companyId, order.id);
+  } catch (err) {
+    // el error ya lo alerta RemitoGenerator
+  } finally {
+    setDownloadingRemito(false);
+  }
+};
 
-    if (!order || !companyId) {
-      console.log("[Remito] Missing order or companyId", { order: !!order, companyId: !!companyId });
-      return;
-    }
-
-    setDownloadingRemito(true);
-    try {
-      console.log("[Remito] CLICK", { companyId, workOrderId: order.id });
-      alert("click OK");
-
-      // sanity: test trivial download (debug)
-      const blob = new Blob(["TEST"], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "test.txt";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-
-      console.log("[Remito] calling real downloader…");
-      await downloadRemito(companyId, order.id);
-    } catch (err) {
-      console.error("[Remito] BUTTON ERROR", err);
-      alert(`Button error: ${(err as any)?.message || String(err)}`);
-    } finally {
-      setDownloadingRemito(false);
-    }
-  };
 
   const handleCompleteTask = async () => {
     if (!order) {
@@ -290,20 +273,18 @@ export default function WorkOrderDetail() {
               </button>
             )}
 
-            {order.status === 'Completed' && (
-              <button
-                id="download-remito"
-                type="button"
-                onClick={handleDownloadRemito}
-                disabled={downloadingRemito}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#fcca53] px-4 py-2 font-bold text-[#694e35] hover:bg-[#ffe5a5] disabled:opacity-60"
-                title={downloadingRemito ? "Generando remito..." : "Descargar Remito"}
-              >
-                {downloadingRemito ? 'Generando remito...' : 'Descargar Remito'}
-              </button>
-            )}
-          </div>
-        </div>
+           {order.status === 'Completed' && (
+  <button
+    id="download-remito"
+    type="button"
+    onClick={handleDownloadRemito}
+    disabled={downloadingRemito}
+    className="inline-flex items-center gap-2 rounded-lg bg-[#fcca53] px-4 py-2 font-bold text-[#694e35] hover:bg-[#ffe5a5] disabled:opacity-60"
+    title={downloadingRemito ? 'Generando remito...' : 'Descargar Remito'}
+  >
+    {downloadingRemito ? 'Generando remito...' : 'Descargar Remito'}
+  </button>
+)}
 
         {/* Tabs */}
         <div className="border-b border-[#d4caaf] mb-6">
