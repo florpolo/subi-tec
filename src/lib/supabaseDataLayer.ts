@@ -1,483 +1,492 @@
-// src/pages/WorkOrderDetail.tsx
-import { useEffect, useState, useCallback } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
-import {
-  dataLayer,
-  WorkOrder,
-  Building,
-  Elevator,
-  Technician,
-  ElevatorHistory,
-  Equipment
-} from '../lib/dataLayer';
-import { ArrowLeft, FileText, Paperclip, Package, History, Edit, CheckCircle } from 'lucide-react';
-import { downloadRemito } from '../lib/RemitoGenerator';
-import { useAuth } from '../contexts/AuthContext';
+// src/lib/supabaseDataLayer.ts
+import { supabase } from './supabase';
 
-export default function WorkOrderDetail() {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const { companyId } = useAuth();
-
-  const [order, setOrder] = useState<WorkOrder | null>(null);
-  const [building, setBuilding] = useState<Building | null>(null);
-  const [elevator, setElevator] = useState<Elevator | null>(null);
-  const [equipment, setEquipment] = useState<Equipment | null>(null);
-  const [technician, setTechnician] = useState<Technician | null>(null);
-  const [elevatorHistory, setElevatorHistory] = useState<ElevatorHistory[]>([]);
-  const [activeTab, setActiveTab] = useState<'overview' | 'attachments' | 'parts' | 'history'>('overview');
-  const [error, setError] = useState<string | null>(null);
-  const [downloadingRemito, setDownloadingRemito] = useState(false);
-  const [completingTask, setCompletingTask] = useState(false);
-
-  const loadData = useCallback(async () => {
-    try {
-      setError(null);
-      if (!id || id === 'undefined') return;
-
-      const foundOrder = await dataLayer.getWorkOrder(id);
-      if (!foundOrder) {
-        navigate('/orders');
-        return;
-      }
-      setOrder(foundOrder);
-
-      const buildingData = await dataLayer.getBuilding(foundOrder.buildingId);
-      setBuilding(buildingData || null);
-
-      if (foundOrder.elevatorId) {
-        const [elevatorData, historyData] = await Promise.all([
-          dataLayer.getElevator(foundOrder.elevatorId),
-          dataLayer.getElevatorHistory(foundOrder.elevatorId),
-        ]);
-        setElevator(elevatorData || null);
-        setElevatorHistory(historyData || []);
-      } else if (foundOrder.equipmentId) {
-        const equipmentData = await dataLayer.getEquipment(foundOrder.equipmentId);
-        setEquipment(equipmentData || null);
-      }
-
-      if (foundOrder.technicianId) {
-        const techData = await dataLayer.getTechnician(foundOrder.technicianId);
-        setTechnician(techData || null);
-      }
-    } catch (e: unknown) {
-      console.error('WorkOrderDetail loadData error:', e);
-      setError((e as Error)?.message ?? String(e));
-    }
-  }, [id, navigate]);
-
-  const handleDownloadRemito = async (e?: React.MouseEvent) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    if (!order || !companyId) {
-      console.log("[Remito] Missing order/companyId", { hasOrder: !!order, companyId });
-      return;
-    }
-    setDownloadingRemito(true);
-    try {
-      console.log("[Remito] CLICK", { companyId, workOrderId: order.id });
-      alert("Descargando remito…");
-      await downloadRemito(companyId, order.id);
-    } catch (err) {
-      console.error("[Remito] BUTTON ERROR", err);
-      alert(`Button error: ${(err as any)?.message || String(err)}`);
-    } finally {
-      setDownloadingRemito(false);
-    }
-  };
-
-  const handleCompleteTask = async () => {
-    if (!order) {
-      alert('Missing order.');
-      return;
-    }
-    if (order.status === 'Completed') {
-      alert('Esta orden de trabajo ya está completada.');
-      return;
-    }
-    if (!order.signatureDataUrl) {
-      alert('La firma del cliente es requerida para completar esta orden de trabajo.');
-      return;
-    }
-    if (!window.confirm('¿Marcar esta orden de trabajo como Completada?')) return;
-
-    setCompletingTask(true);
-    const originalOrder = { ...order };
-    try {
-      // Optimistic
-      const optimistic: WorkOrder = {
-        ...order,
-        status: 'Completed',
-        finishTime: new Date().toISOString(),
-      };
-      setOrder(optimistic);
-
-      const updatedOrder = await dataLayer.updateWorkOrder(order.id, {
-        status: 'Completed',
-        finishTime: new Date().toISOString(),
-        comments: order.comments,
-        partsUsed: order.partsUsed,
-        photoUrls: order.photoUrls,
-        signatureDataUrl: order.signatureDataUrl,
-      });
-
-      if (!updatedOrder) throw new Error('Failed to receive updated work order from server.');
-      setOrder(updatedOrder);
-      alert('¡Orden de trabajo marcada como Completada!');
-    } catch (err) {
-      console.error('Error completing task:', err);
-      setOrder(originalOrder);
-      alert((err as Error).message || 'Error al completar la tarea. Inténtalo de nuevo.');
-    } finally {
-      setCompletingTask(false);
-    }
-  };
-
-  useEffect(() => {
-    loadData();
-  }, [id, loadData]);
-
-  if (!order) {
-    return (
-      <div className="flex items-center justify-center min-h-[50vh]">
-        <p className="text-[#5e4c1e] text-lg">Cargando...</p>
-      </div>
-    );
-  }
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'Completed': return 'Completada';
-      case 'In Progress': return 'En curso';
-      case 'Pending': return 'Por hacer';
-      default: return status;
-    }
-  };
-
-  const getPriorityColor = (p: string) =>
-    p === 'High' ? 'text-red-600 border-red-600'
-      : p === 'Medium' ? 'text-yellow-700 border-yellow-700'
-      : p === 'Low' ? 'text-green-600 border-green-600'
-      : 'text-[#5e4c1e] border-[#d4caaf]';
-
-  const getPriorityLabel = (p: string) =>
-    p === 'High' ? 'Alta' : p === 'Medium' ? 'Media' : p === 'Low' ? 'Baja' : p;
-
-  const getClaimTypeLabel = (t: string) =>
-    t === 'Semiannual Tests' ? 'Pruebas semestrales'
-      : t === 'Monthly Maintenance' ? 'Mantenimiento mensual'
-      : t === 'Corrective' ? 'Correctivo'
-      : t;
-
-  const getCorrectiveTypeLabel = (t?: string) =>
-    !t ? '' : t === 'Minor Repair' ? 'Reparación menor' : t === 'Refurbishment' ? 'Reacondicionamiento' : t === 'Installation' ? 'Instalación' : t;
-
-  const tabs = [
-    { id: 'overview', label: 'Resumen', icon: FileText },
-    { id: 'attachments', label: 'Adjuntos', icon: Paperclip },
-    { id: 'parts', label: 'Repuestos', icon: Package },
-    { id: 'history', label: 'Historial del Ascensor', icon: History },
-  ] as const;
-
-  return (
-    <div className="space-y-6">
-      <Link
-        to="/orders"
-        className="inline-flex items-center gap-2 text-[#694e35] hover:text-[#5e4c1e] font-medium focus:outline-none focus:ring-2 focus:ring-[#fcca53] rounded px-2 py-1"
-      >
-        <ArrowLeft size={20} />
-        Volver a Órdenes
-      </Link>
-
-      <div className="bg-[#f4ead0] rounded-xl shadow-lg border-2 border-[#d4caaf] p-6">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
-          <div>
-            <h2 className="text-3xl font-bold text-[#694e35] mb-2">Orden de Trabajo</h2>
-            <div className="flex flex-wrap items-center gap-3">
-              <span className={`px-2 py-0.5 text-xs font-medium border ${getPriorityColor(order.priority)} rounded`}>
-                {getPriorityLabel(order.priority)}
-              </span>
-              <span className="text-sm text-[#5e4c1e]">Estado: {getStatusLabel(order.status)}</span>
-            </div>
-          </div>
-
-          <div className="flex gap-2">
-            <Link
-              to={`/orders/${order.id}/edit`}
-              className="flex items-center gap-2 px-4 py-2 bg-yellow-500 text-[#520f0f] rounded-lg font-medium hover:bg-yellow-400 transition-colors focus:outline-none focus:ring-2 focus:ring-[#520f0f]"
-            >
-              <Edit size={18} />
-              Editar
-            </Link>
-
-            {order.status !== 'Completed' && (
-              <button
-                onClick={handleCompleteTask}
-                disabled={completingTask}
-                className="inline-flex items-center gap-2 rounded-lg bg-green-500 px-4 py-2 font-bold text-white hover:bg-green-600 disabled:opacity-60"
-              >
-                <CheckCircle size={18} />
-                {completingTask ? 'Completando...' : 'Completar Tarea'}
-              </button>
-            )}
-
-            {order.status === 'Completed' && (
-              <button
-                id="download-remito"
-                type="button"
-                onClick={handleDownloadRemito}
-                disabled={downloadingRemito}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#fcca53] px-4 py-2 font-bold text-[#694e35] hover:bg-[#ffe5a5] disabled:opacity-60"
-                title={downloadingRemito ? 'Generando remito…' : 'Descargar Remito'}
-              >
-                {downloadingRemito ? 'Generando remito…' : 'Descargar Remito'}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Tabs */}
-        <div className="border-b border-[#d4caaf] mb-6">
-          <div className="flex gap-1 overflow-x-auto">
-            {tabs.map((tab) => {
-              const Icon = tab.icon;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors border-b-2 focus:outline-none focus:ring-2 focus:ring-yellow-500 whitespace-nowrap ${
-                    activeTab === tab.id
-                      ? 'border-yellow-500 text-[#520f0f]'
-                      : 'border-transparent text-gray-600 hover:text-[#520f0f]'
-                  }`}
-                >
-                  <Icon size={18} />
-                  {tab.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* ===== Contenido por tab ===== */}
-        {activeTab === 'overview' && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <h3 className="font-bold text-[#694e35] mb-3">Información del Reclamo</h3>
-                <div className="space-y-2 text-sm">
-                  <div>
-                    <span className="text-[#5e4c1e]">Tipo:</span>{' '}
-                    <span className="font-medium text-[#694e35]">{getClaimTypeLabel(order.claimType)}</span>
-                  </div>
-
-                  {order.correctiveType && (
-                    <div>
-                      <span className="text-[#5e4c1e]">Tipo de Correctivo:</span>{' '}
-                      <span className="font-medium text-[#694e35]">{getCorrectiveTypeLabel(order.correctiveType)}</span>
-                    </div>
-                  )}
-
-                  <div>
-                    <span className="text-[#5e4c1e]">Descripción:</span>{' '}
-                    <span className="font-medium text-[#694e35]">{order.description}</span>
-                  </div>
-
-                  {order.dateTime && (
-                    <div>
-                      <span className="text-[#5e4c1e]">Programada:</span>{' '}
-                      <span className="font-medium text-[#694e35]">
-                        {new Date(order.dateTime).toLocaleString('es-AR', {
-                          day: '2-digit', month: '2-digit', year: 'numeric',
-                          hour: '2-digit', minute: '2-digit',
-                        })}
-                      </span>
-                    </div>
-                  )}
-
-                  <div>
-                    <span className="text-[#5e4c1e]">Creada:</span>{' '}
-                    <span className="font-medium text-[#694e35]">
-                      {new Date(order.createdAt).toLocaleString('es-AR', {
-                        day: '2-digit', month: '2-digit', year: 'numeric',
-                        hour: '2-digit', minute: '2-digit',
-                      })}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="font-bold text-[#694e35] mb-3">Ubicación</h3>
-                <div className="space-y-2 text-sm">
-                  <div>
-                    <span className="text-[#5e4c1e]">Edificio:</span>{' '}
-                    <span className="font-medium text-[#694e35]">{building?.address || 'Desconocido'}</span>
-                  </div>
-                  <div>
-                    <span className="text-[#5e4c1e]">Barrio:</span>{' '}
-                    <span className="font-medium text-[#694e35]">{building?.neighborhood || 'N/A'}</span>
-                  </div>
-                  <div>
-                    <span className="text-[#5e4c1e]">{equipment ? 'Equipo:' : 'Ascensor:'}</span>{' '}
-                    {elevator && (
-                      <Link
-                        to={`/elevators/${elevator.id}`}
-                        className="font-medium text-[#694e35] hover:text-[#fcca53] underline"
-                      >
-                        {`${elevator.number} - ${elevator.locationDescription}`}
-                      </Link>
-                    )}
-                    {equipment && (
-                      <Link
-                        to={`/equipment/${equipment.id}`}
-                        className="font-medium text-[#694e35] hover:text-[#fcca53] underline"
-                      >
-                        {`${equipment.name} - ${equipment.locationDescription}`}
-                      </Link>
-                    )}
-                    {!elevator && !equipment && <span className="font-medium text-[#694e35]">Desconocido</span>}
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="font-bold text-[#694e35] mb-3">Asignación</h3>
-                <div className="space-y-2 text-sm">
-                  <div>
-                    <span className="text-[#5e4c1e]">Técnico:</span>{' '}
-                    <span className="font-medium text-[#694e35]">{technician?.name || 'Sin asignar'}</span>
-                  </div>
-
-                  {order.startTime && (
-                    <div>
-                      <span className="text-[#5e4c1e]">Iniciada:</span>{' '}
-                      <span className="font-medium text-[#694e35]">
-                        {new Date(order.startTime).toLocaleString('es-AR', {
-                          day: '2-digit', month: '2-digit', year: 'numeric',
-                          hour: '2-digit', minute: '2-digit',
-                        })}
-                      </span>
-                    </div>
-                  )}
-
-                  {order.finishTime && (
-                    <div>
-                      <span className="text-[#5e4c1e]">Finalizada:</span>{' '}
-                      <span className="font-medium text-[#694e35]">
-                        {new Date(order.finishTime).toLocaleString('es-AR', {
-                          day: '2-digit', month: '2-digit', year: 'numeric',
-                          hour: '2-digit', minute: '2-digit',
-                        })}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {order.comments && (
-              <div>
-                <h3 className="font-bold text-[#694e35] mb-3">Comentarios</h3>
-                <p className="text-[#5e4c1e] bg-white p-4 rounded-lg border border-[#d4caaf]">
-                  {order.comments}
-                </p>
-              </div>
-            )}
-
-            {order.signatureDataUrl && (
-              <div>
-                <h3 className="font-bold text-[#694e35] mb-3">Firma del Cliente</h3>
-                <img
-                  src={order.signatureDataUrl}
-                  alt="Firma del cliente"
-                  className="border-2 border-[#d4caaf] rounded-lg bg-white max-w-md"
-                />
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'attachments' && (
-          <div className="space-y-4">
-            <h3 className="font-bold text-[#694e35]">Fotos</h3>
-            {order.photoUrls && order.photoUrls.length > 0 ? (
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {order.photoUrls.map((url, idx) => (
-                  <img
-                    key={idx}
-                    src={url}
-                    alt={`Adjunto ${idx + 1}`}
-                    className="w-full h-48 object-cover rounded-lg border-2 border-[#d4caaf]"
-                  />
-                ))}
-              </div>
-            ) : (
-              <p className="text-[#5e4c1e]">No hay fotos adjuntas</p>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'parts' && (
-          <div className="space-y-4">
-            <h3 className="font-bold text-[#694e35]">Repuestos Utilizados</h3>
-            {order.partsUsed && order.partsUsed.length > 0 ? (
-              <table className="w-full">
-                <thead className="bg-[#d4caaf]">
-                  <tr>
-                    <th className="px-4 py-3 text-left text-[#694e35] font-bold">Nombre del Repuesto</th>
-                    <th className="px-4 py-3 text-left text-[#694e35] font-bold">Cantidad</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-[#d4caaf]">
-                  {order.partsUsed.map((part, idx) => (
-                    <tr key={idx}>
-                      <td className="px-4 py-3 text-[#694e35]">{part.name}</td>
-                      <td className="px-4 py-3 text-[#694e35]">{part.quantity}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            ) : (
-              <p className="text-[#5e4c1e]">No se utilizaron repuestos</p>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'history' && (
-          <div className="space-y-4">
-            <h3 className="font-bold text-[#694e35]">Historial del Ascensor #{elevator?.number}</h3>
-            {elevatorHistory.length > 0 ? (
-              <div className="space-y-3">
-                {elevatorHistory.map((entry) => (
-                  <div key={entry.id} className="bg-white p-4 rounded-lg border border-[#d4caaf]">
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="font-medium text-[#694e35]">{entry.technicianName}</span>
-                      <span className="text-sm text-[#5e4c1e]">
-                        {new Date(entry.date).toLocaleDateString('es-AR', {
-                          day: '2-digit', month: '2-digit', year: 'numeric',
-                        })}
-                      </span>
-                    </div>
-                    <p className="text-[#5e4c1e] text-sm">{entry.description}</p>
-                    <Link
-                      to={`/orders/${entry.workOrderId}`}
-                      className="text-sm text-[#694e35] hover:text-[#fcca53] underline mt-2 inline-block"
-                    >
-                      Ver Orden de Trabajo →
-                    </Link>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-[#5e4c1e]">No hay entradas en el historial</p>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+/** ===== Tipos crudos (tal como están en Supabase) ===== */
+export interface Building {
+  id: string;
+  company_id: string;
+  address: string;
+  neighborhood: string;
+  contact_phone: string;
+  entry_hours: string;
+  client_name: string;
+  relationship_start_date: string;
+  created_at?: string;
 }
+
+export interface Elevator {
+  id: string;
+  company_id: string;
+  building_id: string;
+  number: number;
+  location_description: string;
+  has_two_doors: boolean;
+  status: 'fit' | 'fit-needs-improvements' | 'not-fit';
+  stops: number;
+  capacity: number;
+  machine_room_location: string;
+  control_type: string;
+  created_at?: string;
+}
+
+export interface Technician {
+  id: string;
+  company_id: string;
+  user_id?: string;
+  name: string;
+  specialty: string;
+  contact: string;
+  role: 'Reclamista' | 'Engrasador';
+  created_at?: string;
+}
+
+export interface WorkOrder {
+  id: string;
+  company_id: string;
+  claim_type: 'Semiannual Tests' | 'Monthly Maintenance' | 'Corrective';
+  corrective_type?: 'Minor Repair' | 'Refurbishment' | 'Installation';
+  building_id: string;
+  elevator_id?: string | null;
+  equipment_id?: string | null;
+  technician_id?: string | null;
+  contact_name: string;
+  contact_phone: string;
+  date_time?: string | null;
+  description: string;
+  status: 'Pending' | 'In Progress' | 'Completed';
+  priority: 'Low' | 'Medium' | 'High';
+  created_at: string;
+  start_time?: string | null;
+  finish_time?: string | null;
+  comments?: string | null;
+  parts_used?: Array<{ name: string; quantity: number }> | null;
+  photo_urls?: string[] | null;
+  signature_data_url?: string | null;
+}
+
+export interface ElevatorHistory {
+  id: string;
+  company_id: string;
+  elevator_id: string;
+  work_order_id: string;
+  date: string; // YYYY-MM-DD
+  description: string;
+  technician_name: string;
+  created_at?: string;
+}
+
+/** ===== Equipos ===== */
+export type EquipmentType =
+  | 'elevator'
+  | 'water_pump'
+  | 'freight_elevator'
+  | 'car_lift'
+  | 'dumbwaiter'
+  | 'camillero'
+  | 'other';
+
+export interface Equipment {
+  id: string;
+  company_id: string;
+  building_id: string;
+  type: EquipmentType;
+  name: string;
+  location_description: string;
+  brand: string | null;
+  model: string | null;
+  serial_number: string | null;
+  capacity: number | null;
+  status: 'fit' | 'out_of_service';
+  created_at?: string;
+}
+
+/** ====== Utilidades ====== */
+const toNull = (v: any) => {
+  if (v === undefined || v === null) return null;
+  if (typeof v === 'string') {
+    const s = v.trim().toLowerCase();
+    if (s === '' || s === 'undefined' || s === 'null') return null;
+  }
+  return v;
+};
+
+function dataUrlToBlob(dataUrl: string): Blob {
+  // "data:image/png;base64,AAAA..."
+  const [meta, b64] = dataUrl.split(',');
+  const mime = meta.match(/data:(.*);base64/)?.[1] || 'image/png';
+  const bin = atob(b64 || '');
+  const len = bin.length;
+  const arr = new Uint8Array(len);
+  for (let i = 0; i < len; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+
+/* ===== Data Layer (CRUD) ===== */
+export const supabaseDataLayer = {
+  /* ========== Buildings ========== */
+  async listBuildings(companyId: string): Promise<Building[]> {
+    const { data, error } = await supabase
+      .from<Building>('buildings')
+      .select('*')
+      .eq('company_id', companyId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []) as Building[];
+  },
+
+  async getBuilding(id: string, companyId: string): Promise<Building | null> {
+    const { data, error } = await supabase
+      .from<Building>('buildings')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  },
+
+  async createBuilding(building: Omit<Building, 'id' | 'created_at'>, companyId: string): Promise<Building | null> {
+    const payload = { ...building, company_id: companyId };
+    const { data, error } = await supabase.from<Building>('buildings').insert(payload).select().maybeSingle();
+    if (error) throw error;
+    return data || null;
+  },
+
+  async updateBuilding(id: string, updates: Partial<Building>, companyId: string): Promise<Building | null> {
+    const { data, error } = await supabase
+      .from<Building>('buildings')
+      .update(updates)
+      .eq('company_id', companyId)
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  },
+
+  /* ========== Elevators ========== */
+  async listElevators(companyId: string, buildingId?: string): Promise<Elevator[]> {
+    let q = supabase.from<Elevator>('elevators').select('*').eq('company_id', companyId);
+    if (buildingId) q = q.eq('building_id', buildingId);
+    const { data, error } = await q.order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []) as Elevator[];
+  },
+
+  async getElevator(id: string, companyId: string): Promise<Elevator | null> {
+    const { data, error } = await supabase
+      .from<Elevator>('elevators')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  },
+
+  async createElevator(elevator: Omit<Elevator, 'id' | 'created_at'>, companyId: string): Promise<Elevator | null> {
+    const payload = { ...elevator, company_id: companyId };
+    const { data, error } = await supabase.from<Elevator>('elevators').insert(payload).select().maybeSingle();
+    if (error) throw error;
+    return data || null;
+  },
+
+  async updateElevator(id: string, updates: Partial<Elevator>, companyId: string): Promise<Elevator | null> {
+    const { data, error } = await supabase
+      .from<Elevator>('elevators')
+      .update(updates)
+      .eq('company_id', companyId)
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  },
+
+  async deleteElevator(id: string, companyId: string): Promise<void> {
+    const { error } = await supabase.from<Elevator>('elevators').delete().eq('company_id', companyId).eq('id', id);
+    if (error) throw error;
+  },
+
+  /* ========== Technicians ========== */
+  async listTechnicians(companyId: string): Promise<Technician[]> {
+    const { data, error } = await supabase
+      .from<Technician>('technicians')
+      .select('*')
+      .eq('company_id', companyId)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []) as Technician[];
+  },
+
+  async getTechnician(id: string, companyId: string): Promise<Technician | null> {
+    const { data, error } = await supabase
+      .from<Technician>('technicians')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  },
+
+  async createTechnician(technician: Omit<Technician, 'id' | 'created_at'>, companyId: string): Promise<Technician | null> {
+    const payload = { ...technician, company_id: companyId };
+    const { data, error } = await supabase.from<Technician>('technicians').insert(payload).select().maybeSingle();
+    if (error) throw error;
+    return data || null;
+  },
+
+  async updateTechnician(id: string, updates: Partial<Technician>, companyId: string): Promise<Technician | null> {
+    const { data, error } = await supabase
+      .from<Technician>('technicians')
+      .update(updates)
+      .eq('company_id', companyId)
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  },
+
+  // Estado simple: 'free' | 'busy'
+  async getTechnicianStatus(technicianId: string, companyId: string): Promise<'free' | 'busy'> {
+    const { data, error } = await supabase
+      .from<WorkOrder>('work_orders')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('technician_id', technicianId)
+      .eq('status', 'In Progress')
+      .limit(1);
+    if (error) throw error;
+    return data && data.length > 0 ? 'busy' : 'free';
+  },
+
+  /* ========== Work Orders ========== */
+  async listWorkOrders(
+    companyId: string,
+    filters?: {
+      status?: string;
+      priority?: string;
+      technician_id?: string;
+      building_id?: string;
+      elevator_id?: string;
+      equipment_id?: string;
+    }
+  ): Promise<WorkOrder[]> {
+    let q = supabase.from<WorkOrder>('work_orders').select('*').eq('company_id', companyId);
+
+    if (filters?.status) q = q.eq('status', filters.status);
+    if (filters?.priority) q = q.eq('priority', filters.priority);
+    if (filters?.technician_id !== undefined) q = q.eq('technician_id', filters.technician_id);
+    if (filters?.building_id) q = q.eq('building_id', filters.building_id);
+    if (filters?.elevator_id) q = q.eq('elevator_id', filters.elevator_id);
+    if (filters?.equipment_id) q = q.eq('equipment_id', filters.equipment_id);
+
+    const { data, error } = await q.order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []) as WorkOrder[];
+  },
+
+  async getWorkOrder(id: string, companyId: string): Promise<WorkOrder | null> {
+    const { data, error } = await supabase
+      .from<WorkOrder>('work_orders')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  },
+
+  // >>>>>>> createWorkOrder con mapeo explícito + saneo de opcionales
+  async createWorkOrder(
+    order: Omit<WorkOrder, 'id' | 'created_at'>,
+    companyId: string
+  ): Promise<WorkOrder | null> {
+    // helper: lee snake o camel
+    const get = (a: any, snake: string, camel: string) =>
+      (a as any)[snake] ?? (a as any)[camel];
+
+    const payload: any = {
+      company_id: companyId,
+
+      claim_type:         get(order, 'claim_type', 'claimType'),
+      corrective_type:    toNull(get(order, 'corrective_type', 'correctiveType')),
+
+      building_id:        get(order, 'building_id', 'buildingId'),
+
+      elevator_id:        toNull(get(order, 'elevator_id', 'elevatorId')),
+      equipment_id:       toNull(get(order, 'equipment_id', 'equipmentId')),
+      technician_id:      toNull(get(order, 'technician_id', 'technicianId')),
+
+      contact_name:       get(order, 'contact_name', 'contactName') ?? '',
+      contact_phone:      get(order, 'contact_phone', 'contactPhone') ?? '',
+
+      date_time:          toNull(get(order, 'date_time', 'dateTime')),
+      description:        get(order, 'description', 'description') ?? '',
+      status:             get(order, 'status', 'status') ?? 'Pending',
+      priority:           get(order, 'priority', 'priority') ?? 'Low',
+
+      start_time:         toNull(get(order, 'start_time', 'startTime')),
+      finish_time:        toNull(get(order, 'finish_time', 'finishTime')),
+
+      comments:           get(order, 'comments', 'comments') ?? null,
+      parts_used:         get(order, 'parts_used', 'partsUsed') ?? null,
+      photo_urls:         get(order, 'photo_urls', 'photoUrls') ?? null,
+      signature_data_url: get(order, 'signature_data_url', 'signatureDataUrl') ?? null,
+    };
+
+    if (!payload.building_id) {
+      throw new Error('building_id es requerido para crear la orden');
+    }
+    if (!payload.elevator_id && !payload.equipment_id) {
+      throw new Error('Debés asignar un ascensor o un equipo a la orden');
+    }
+
+    const { data, error } = await supabase
+      .from<WorkOrder>('work_orders')
+      .insert(payload)
+      .select()
+      .maybeSingle();
+
+    if (error) throw error;
+    return data || null;
+  },
+
+  async updateWorkOrder(
+    id: string,
+    updates: Partial<WorkOrder>,
+    companyId: string
+  ): Promise<WorkOrder | null> {
+    // Saneamos opcionales para no enviar "undefined" a columnas UUID/timestamp
+    const sanitized: any = { ...updates };
+
+    if ('elevator_id' in sanitized) sanitized.elevator_id = toNull(sanitized.elevator_id);
+    if ('equipment_id' in sanitized) sanitized.equipment_id = toNull(sanitized.equipment_id);
+    if ('technician_id' in sanitized) sanitized.technician_id = toNull(sanitized.technician_id);
+
+    if ('date_time' in sanitized) sanitized.date_time = toNull(sanitized.date_time);
+    if ('start_time' in sanitized) sanitized.start_time = toNull(sanitized.start_time);
+    if ('finish_time' in sanitized) sanitized.finish_time = toNull(sanitized.finish_time);
+
+    if ('comments' in sanitized) sanitized.comments = sanitized.comments ?? null;
+    if ('parts_used' in sanitized) sanitized.parts_used = sanitized.parts_used ?? null;
+    if ('photo_urls' in sanitized) sanitized.photo_urls = sanitized.photo_urls ?? null;
+    if ('signature_data_url' in sanitized) sanitized.signature_data_url = sanitized.signature_data_url ?? null;
+
+    const { data, error } = await supabase
+      .from<WorkOrder>('work_orders')
+      .update(sanitized)
+      .eq('company_id', companyId)
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+
+    if (error) throw error;
+    return data || null;
+  },
+
+  /* ========== Elevator History ========== */
+  async addElevatorHistory(
+    history: Omit<ElevatorHistory, 'id' | 'company_id' | 'created_at'>,
+    companyId: string
+  ): Promise<ElevatorHistory | null> {
+    const payload = { ...history, company_id: companyId };
+    const { data, error } = await supabase
+      .from<ElevatorHistory>('elevator_history')
+      .insert(payload)
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  },
+
+  async getElevatorHistory(elevatorId: string, companyId: string): Promise<ElevatorHistory[]> {
+    const { data, error } = await supabase
+      .from<ElevatorHistory>('elevator_history')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('elevator_id', elevatorId)
+      .order('date', { ascending: false });
+    if (error) throw error;
+    return (data || []) as ElevatorHistory[];
+  },
+
+  /* ========== Uploads ========== */
+  async uploadPhoto(file: File, companyId: string, workOrderId: string): Promise<string | null> {
+    const bucket = 'work-order-photos';
+    const path = `${companyId}/${workOrderId}/${Date.now()}_${file.name}`;
+    const { error } = await supabase.storage.from(bucket).upload(path, file, {
+      cacheControl: '3600',
+      upsert: false,
+    });
+    if (error) {
+      console.error('uploadPhoto error', error);
+      return null;
+    }
+    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+    return data?.publicUrl || null;
+  },
+
+  async uploadSignature(dataUrl: string, companyId: string, workOrderId: string): Promise<string | null> {
+    const bucket = 'work-order-signatures';
+    const path = `${companyId}/${workOrderId}/signature_${Date.now()}.png`;
+    const blob = dataUrlToBlob(dataUrl);
+    const { error } = await supabase.storage.from(bucket).upload(path, blob, {
+      cacheControl: '3600',
+      upsert: true,
+      contentType: 'image/png',
+    });
+    if (error) {
+      console.error('uploadSignature error', error);
+      return null;
+    }
+    const { data } = supabase.storage.from(bucket).getPublicUrl(path);
+    return data?.publicUrl || null;
+  },
+
+  /* ========== Equipments (CRUD) ========== */
+  async listEquipments(companyId: string, buildingId?: string): Promise<Equipment[]> {
+    let q = supabase.from<Equipment>('equipments').select('*').eq('company_id', companyId);
+    if (buildingId) q = q.eq('building_id', buildingId);
+    const { data, error } = await q.order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []) as Equipment[];
+  },
+
+  async getEquipment(id: string, companyId: string): Promise<Equipment | null> {
+    const { data, error } = await supabase
+      .from<Equipment>('equipments')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('id', id)
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  },
+
+  async createEquipment(equipment: Omit<Equipment, 'id' | 'created_at'>, companyId: string): Promise<Equipment | null> {
+    const payload = { ...equipment, company_id: companyId };
+    const { data, error } = await supabase.from<Equipment>('equipments').insert(payload).select().maybeSingle();
+    if (error) throw error;
+    return data || null;
+  },
+
+  async updateEquipment(id: string, updates: Partial<Equipment>, companyId: string): Promise<Equipment | null> {
+    const { data, error } = await supabase
+      .from<Equipment>('equipments')
+      .update(updates)
+      .eq('company_id', companyId)
+      .eq('id', id)
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data || null;
+  },
+
+  async deleteEquipment(id: string, companyId: string): Promise<void> {
+    const { error } = await supabase.from<Equipment>('equipments').delete().eq('company_id', companyId).eq('id', id);
+    if (error) throw error;
+  },
+};
