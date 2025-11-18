@@ -11,7 +11,8 @@ const ANCHORS_PT = {
   FIRMA_BOX: { x: 376.3, y: 109.65, w: 187.0, h: 82.0 },
 
   // Texto domicilio (línea única con autoscale)
-  DOMICILIO: { x: -1.73, y: 659.0, maxW: 491.25 },
+DOMICILIO: { x: 150, y: 659.0, maxW: 430 },
+
 
   // Párrafo “Certifico que…”
   DESC_START: { x: 134.9, y: 560.9, maxW: 491.25, lineH: 16.5, maxLines: 10 },
