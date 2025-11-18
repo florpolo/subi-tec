@@ -273,7 +273,7 @@ export default function WorkOrderDetail() {
               </button>
             )}
 
-           {order.status === 'Completed' && (
+          {order.status === 'Completed' && (
   <button
     id="download-remito"
     type="button"
@@ -285,6 +285,9 @@ export default function WorkOrderDetail() {
     {downloadingRemito ? 'Generando remito...' : 'Descargar Remito'}
   </button>
 )}
+
+          </div>
+        </div>
 
         {/* Tabs */}
         <div className="border-b border-[#d4caaf] mb-6">
