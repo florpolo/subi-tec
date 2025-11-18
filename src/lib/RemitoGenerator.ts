@@ -268,6 +268,19 @@ export async function downloadRemito(companyId: string, workOrderId: string) {
     const bytes = await pdf.save();
     console.log('[Remito] bytes', bytes.byteLength);
 
+    // 4.5) Log a DB (no bloquea descarga si falla)
+    try {
+      await supabase.from('remitos').insert({
+        company_id: companyId,
+        work_order_id: workOrderId,
+        remito_number: remitoNumber,
+        file_url: null,
+      });
+      console.log('[Remito] DB log OK');
+    } catch (e) {
+      console.warn('[Remito] insert log failed:', e);
+    }
+
     // 5) Descarga
     const blob = new Blob([bytes], { type: 'application/pdf' });
     const url = URL.createObjectURL(blob);
