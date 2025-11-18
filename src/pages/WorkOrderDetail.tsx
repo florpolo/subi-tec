@@ -443,23 +443,21 @@ export default function WorkOrderDetail() {
                       </span>
                     </div>
                   )}
-                  {order.finishTime && (
-                    <div>
-                      <span className="text-[#5e4c1e]">Finalizada:</span>{' '}
-                      <span className="font-medium text-[#694e35]}>
-                        {new Date(order.finishTime).toLocaleString('es-AR', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          year: 'numeric',
-                          hour: '2-digit',
-                          minute: '2-digit'
-                        })}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+
+                        {order.finishTime && (
+  <div>
+    <span className="text-[#5e4c1e]">Finalizada:</span>{' '}
+    <span className="font-medium text-[#694e35]">
+      {new Date(order.finishTime).toLocaleString('es-AR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })}
+    </span>
+  </div>
+)}
 
             {order.comments && (
               <div>
